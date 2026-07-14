@@ -169,6 +169,9 @@ bool FontDownloadActivity::fetchAndParseManifest() {
   }
 
   LOG_DBG("FONT", "Manifest loaded: %zu families", families_.size());
+  for (const auto& f : families_) {
+    LOG_DBG("FONT", "  family: %s", f.name.c_str());
+  }
   return true;
 }
 
