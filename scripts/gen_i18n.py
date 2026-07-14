@@ -315,16 +315,14 @@ def escape_cpp_string(s: str) -> List[str]:
 
     s = s.replace("\n", "\\n")
 
-    # Build a flat list of "tokens", where each token is either a regular
-    # character sequence or a hex escape.  A segment break happens after
-    # every hex escape.
     segments: List[str] = []
     current: List[str] = []
     i = 0
 
     def _flush() -> None:
-        segments.append("".join(current))
-        current.clear()
+        if current:
+            segments.append("".join(current))
+            current.clear()
 
     while i < len(s):
         ch = s[i]
@@ -348,12 +346,11 @@ def escape_cpp_string(s: str) -> List[str]:
             current.append(ch)
             i += 1
         else:
-            for byte in ch.encode("utf-8"):
-                current.append(f"\\x{byte:02X}")
-                _flush()  # segment break after hex
+            # Emit UTF-8 source bytes directly; modern C++ compilers handle
+            # UTF-8 source characters in narrow string literals correctly.
+            current.append(ch)
             i += 1
 
-    # Flush remaining content
     _flush()
 
     return segments

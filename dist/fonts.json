@@ -1,0 +1,746 @@
+{
+  "version": 1,
+  "baseUrl": "https://github.com/iori7295/crosspoint-jp/releases/download/sd-fonts-m1-b4/",
+  "families": [
+    {
+      "name": "Alegreya",
+      "description": "Calligraphic serif/display (Latin, Greek, Cyrillic)",
+      "styles": [
+        "regular",
+        "bold",
+        "italic",
+        "bolditalic"
+      ],
+      "files": [
+        {
+          "name": "Alegreya_12.cpfont",
+          "size": 573620,
+          "crc32": 373423787
+        },
+        {
+          "name": "Alegreya_14.cpfont",
+          "size": 717198,
+          "crc32": 3874218538
+        },
+        {
+          "name": "Alegreya_16.cpfont",
+          "size": 880272,
+          "crc32": 1534373059
+        },
+        {
+          "name": "Alegreya_18.cpfont",
+          "size": 1066958,
+          "crc32": 140226318
+        }
+      ]
+    },
+    {
+      "name": "AtkinsonHyperlegibleNext",
+      "description": "Accessibility font for low vision (Latin)",
+      "styles": [
+        "regular",
+        "bold",
+        "italic",
+        "bolditalic"
+      ],
+      "files": [
+        {
+          "name": "AtkinsonHyperlegibleNext_12.cpfont",
+          "size": 351225,
+          "crc32": 2012964377
+        },
+        {
+          "name": "AtkinsonHyperlegibleNext_14.cpfont",
+          "size": 437096,
+          "crc32": 1362605763
+        },
+        {
+          "name": "AtkinsonHyperlegibleNext_16.cpfont",
+          "size": 528811,
+          "crc32": 1567787902
+        },
+        {
+          "name": "AtkinsonHyperlegibleNext_18.cpfont",
+          "size": 639781,
+          "crc32": 941848139
+        }
+      ]
+    },
+    {
+      "name": "BIZUDGothic",
+      "description": "UD Gothic Japanese (MORISAWA, optimized for readability)",
+      "styles": [
+        "regular",
+        "bold"
+      ],
+      "files": [
+        {
+          "name": "BIZUDGothic_14.cpfont",
+          "size": 4407751,
+          "crc32": 2486579022
+        },
+        {
+          "name": "BIZUDGothic_16.cpfont",
+          "size": 5469745,
+          "crc32": 1629394343
+        },
+        {
+          "name": "BIZUDGothic_18.cpfont",
+          "size": 7153711,
+          "crc32": 2658754732
+        }
+      ]
+    },
+    {
+      "name": "BIZUDMincho",
+      "description": "UD Mincho Japanese (MORISAWA, optimized for readability)",
+      "styles": [
+        "regular",
+        "bold"
+      ],
+      "files": [
+        {
+          "name": "BIZUDMincho_14.cpfont",
+          "size": 4329218,
+          "crc32": 3840920171
+        },
+        {
+          "name": "BIZUDMincho_16.cpfont",
+          "size": 5414917,
+          "crc32": 2590380464
+        },
+        {
+          "name": "BIZUDMincho_18.cpfont",
+          "size": 7002497,
+          "crc32": 959458441
+        }
+      ]
+    },
+    {
+      "name": "Bitter",
+      "description": "Slab serif designed for e-ink (Latin, Cyrillic)",
+      "styles": [
+        "regular",
+        "bold",
+        "italic",
+        "bolditalic"
+      ],
+      "files": [
+        {
+          "name": "Bitter_12.cpfont",
+          "size": 541740,
+          "crc32": 1400977476
+        },
+        {
+          "name": "Bitter_14.cpfont",
+          "size": 671148,
+          "crc32": 3473252284
+        },
+        {
+          "name": "Bitter_16.cpfont",
+          "size": 814156,
+          "crc32": 1721125028
+        },
+        {
+          "name": "Bitter_18.cpfont",
+          "size": 981062,
+          "crc32": 1070150970
+        }
+      ]
+    },
+    {
+      "name": "Domitian",
+      "description": "A humanist serif for literary reading (Latin, Greek, Cyrillic)",
+      "styles": [
+        "regular",
+        "bold",
+        "italic",
+        "bolditalic"
+      ],
+      "files": [
+        {
+          "name": "Domitian_12.cpfont",
+          "size": 639997,
+          "crc32": 664261630
+        },
+        {
+          "name": "Domitian_14.cpfont",
+          "size": 797746,
+          "crc32": 4014518459
+        },
+        {
+          "name": "Domitian_16.cpfont",
+          "size": 972969,
+          "crc32": 1060510384
+        },
+        {
+          "name": "Domitian_18.cpfont",
+          "size": 1175864,
+          "crc32": 3284057568
+        }
+      ]
+    },
+    {
+      "name": "GentiumBookPlus",
+      "description": "Scholarly serif with wide Unicode coverage (Latin, Greek, Cyrillic, IPA)",
+      "styles": [
+        "regular",
+        "bold",
+        "italic",
+        "bolditalic"
+      ],
+      "files": [
+        {
+          "name": "GentiumBookPlus_12.cpfont",
+          "size": 557364,
+          "crc32": 121427312
+        },
+        {
+          "name": "GentiumBookPlus_14.cpfont",
+          "size": 693343,
+          "crc32": 1380090587
+        },
+        {
+          "name": "GentiumBookPlus_16.cpfont",
+          "size": 858732,
+          "crc32": 3877620819
+        },
+        {
+          "name": "GentiumBookPlus_18.cpfont",
+          "size": 1054897,
+          "crc32": 1256639660
+        }
+      ]
+    },
+    {
+      "name": "IBMPlexMono",
+      "description": "Monospace for code and technical reading (Latin, Greek, Cyrillic)",
+      "styles": [
+        "regular",
+        "bold",
+        "italic",
+        "bolditalic"
+      ],
+      "files": [
+        {
+          "name": "IBMPlexMono_12.cpfont",
+          "size": 551654,
+          "crc32": 2576139209
+        },
+        {
+          "name": "IBMPlexMono_14.cpfont",
+          "size": 704898,
+          "crc32": 1465633940
+        },
+        {
+          "name": "IBMPlexMono_16.cpfont",
+          "size": 874909,
+          "crc32": 3294731304
+        },
+        {
+          "name": "IBMPlexMono_18.cpfont",
+          "size": 1093322,
+          "crc32": 2522873767
+        }
+      ]
+    },
+    {
+      "name": "IBMPlexSans",
+      "description": "IBM corporate sans-serif (Latin, Greek, Cyrillic)",
+      "styles": [
+        "regular",
+        "bold",
+        "italic",
+        "bolditalic"
+      ],
+      "files": [
+        {
+          "name": "IBMPlexSans_12.cpfont",
+          "size": 708938,
+          "crc32": 2823072135
+        },
+        {
+          "name": "IBMPlexSans_14.cpfont",
+          "size": 860389,
+          "crc32": 42078504
+        },
+        {
+          "name": "IBMPlexSans_16.cpfont",
+          "size": 1032320,
+          "crc32": 2689942962
+        },
+        {
+          "name": "IBMPlexSans_18.cpfont",
+          "size": 1259663,
+          "crc32": 1642620279
+        }
+      ]
+    },
+    {
+      "name": "IBMPlexSerif",
+      "description": "Professional serif (Latin, Greek, Cyrillic)",
+      "styles": [
+        "regular",
+        "bold",
+        "italic",
+        "bolditalic"
+      ],
+      "files": [
+        {
+          "name": "IBMPlexSerif_12.cpfont",
+          "size": 658717,
+          "crc32": 533338668
+        },
+        {
+          "name": "IBMPlexSerif_14.cpfont",
+          "size": 817646,
+          "crc32": 2688111958
+        },
+        {
+          "name": "IBMPlexSerif_16.cpfont",
+          "size": 995177,
+          "crc32": 2818670422
+        },
+        {
+          "name": "IBMPlexSerif_18.cpfont",
+          "size": 1223292,
+          "crc32": 1791355301
+        }
+      ]
+    },
+    {
+      "name": "Inter",
+      "description": "Modern sans-serif (Latin, Greek, Cyrillic)",
+      "styles": [
+        "regular",
+        "bold",
+        "italic",
+        "bolditalic"
+      ],
+      "files": [
+        {
+          "name": "Inter_12.cpfont",
+          "size": 739221,
+          "crc32": 1178001789
+        },
+        {
+          "name": "Inter_14.cpfont",
+          "size": 905405,
+          "crc32": 2012088360
+        },
+        {
+          "name": "Inter_16.cpfont",
+          "size": 1101174,
+          "crc32": 3246014169
+        },
+        {
+          "name": "Inter_18.cpfont",
+          "size": 1319063,
+          "crc32": 1073640834
+        }
+      ]
+    },
+    {
+      "name": "LexicaUltralegible",
+      "description": "Accessibility font for low vision / dyslexia (Latin)",
+      "styles": [
+        "regular",
+        "bold",
+        "italic",
+        "bolditalic"
+      ],
+      "files": [
+        {
+          "name": "LexicaUltralegible_12.cpfont",
+          "size": 331081,
+          "crc32": 3019960981
+        },
+        {
+          "name": "LexicaUltralegible_14.cpfont",
+          "size": 416846,
+          "crc32": 385676272
+        },
+        {
+          "name": "LexicaUltralegible_16.cpfont",
+          "size": 510259,
+          "crc32": 640849688
+        },
+        {
+          "name": "LexicaUltralegible_18.cpfont",
+          "size": 617399,
+          "crc32": 2121750093
+        }
+      ]
+    },
+    {
+      "name": "LibreBaskerville",
+      "description": "A serif reimplementing the classic Baskerville (Latin)",
+      "styles": [
+        "regular",
+        "bold",
+        "italic",
+        "bolditalic"
+      ],
+      "files": [
+        {
+          "name": "LibreBaskerville_12.cpfont",
+          "size": 451588,
+          "crc32": 4049122796
+        },
+        {
+          "name": "LibreBaskerville_14.cpfont",
+          "size": 556067,
+          "crc32": 1378152301
+        },
+        {
+          "name": "LibreBaskerville_16.cpfont",
+          "size": 674096,
+          "crc32": 819345201
+        },
+        {
+          "name": "LibreBaskerville_18.cpfont",
+          "size": 846129,
+          "crc32": 773596983
+        }
+      ]
+    },
+    {
+      "name": "Literata",
+      "description": "Screen-optimized serif (Latin, Greek, Cyrillic)",
+      "styles": [
+        "regular",
+        "bold",
+        "italic",
+        "bolditalic"
+      ],
+      "files": [
+        {
+          "name": "Literata_12.cpfont",
+          "size": 773474,
+          "crc32": 1072849843
+        },
+        {
+          "name": "Literata_14.cpfont",
+          "size": 935785,
+          "crc32": 1397549636
+        },
+        {
+          "name": "Literata_16.cpfont",
+          "size": 1118919,
+          "crc32": 4262730297
+        },
+        {
+          "name": "Literata_18.cpfont",
+          "size": 1388499,
+          "crc32": 650334885
+        }
+      ]
+    },
+    {
+      "name": "Lora",
+      "description": "Calligraphic serif for literary reading (Latin, Cyrillic)",
+      "styles": [
+        "regular",
+        "bold",
+        "italic",
+        "bolditalic"
+      ],
+      "files": [
+        {
+          "name": "Lora_12.cpfont",
+          "size": 483668,
+          "crc32": 3054511079
+        },
+        {
+          "name": "Lora_14.cpfont",
+          "size": 602249,
+          "crc32": 2730291455
+        },
+        {
+          "name": "Lora_16.cpfont",
+          "size": 740855,
+          "crc32": 198928459
+        },
+        {
+          "name": "Lora_18.cpfont",
+          "size": 924294,
+          "crc32": 2136211574
+        }
+      ]
+    },
+    {
+      "name": "Merriweather",
+      "description": "Warm serif for long-form reading (Latin, Cyrillic)",
+      "styles": [
+        "regular",
+        "bold",
+        "italic",
+        "bolditalic"
+      ],
+      "files": [
+        {
+          "name": "Merriweather_12.cpfont",
+          "size": 590808,
+          "crc32": 3708504438
+        },
+        {
+          "name": "Merriweather_14.cpfont",
+          "size": 725593,
+          "crc32": 3300132524
+        },
+        {
+          "name": "Merriweather_16.cpfont",
+          "size": 880337,
+          "crc32": 3227548874
+        },
+        {
+          "name": "Merriweather_18.cpfont",
+          "size": 1056480,
+          "crc32": 655969371
+        }
+      ]
+    },
+    {
+      "name": "NotoSansExtended",
+      "description": "Sans-serif (Latin, Greek, Cyrillic, Georgian, Armenian, Ethiopic)",
+      "styles": [
+        "regular",
+        "bold",
+        "italic",
+        "bolditalic"
+      ],
+      "files": [
+        {
+          "name": "NotoSansExtended_12.cpfont",
+          "size": 651402,
+          "crc32": 356935769
+        },
+        {
+          "name": "NotoSansExtended_14.cpfont",
+          "size": 819984,
+          "crc32": 4026698487
+        },
+        {
+          "name": "NotoSansExtended_16.cpfont",
+          "size": 1009641,
+          "crc32": 2915178512
+        },
+        {
+          "name": "NotoSansExtended_18.cpfont",
+          "size": 1223015,
+          "crc32": 3096113573
+        }
+      ]
+    },
+    {
+      "name": "NotoSansJp",
+      "description": "Sans-serif Japanese (JIS X 0213)",
+      "styles": [
+        "regular",
+        "bold"
+      ],
+      "files": [
+        {
+          "name": "NotoSansJp_14.cpfont",
+          "size": 9819432,
+          "crc32": 4071978937
+        },
+        {
+          "name": "NotoSansJp_16.cpfont",
+          "size": 12049273,
+          "crc32": 3076541763
+        },
+        {
+          "name": "NotoSansJp_18.cpfont",
+          "size": 15086179,
+          "crc32": 3207514464
+        }
+      ]
+    },
+    {
+      "name": "NotoSerifExtended",
+      "description": "Serif (Latin, Greek, Cyrillic)",
+      "styles": [
+        "regular",
+        "bold",
+        "italic",
+        "bolditalic"
+      ],
+      "files": [
+        {
+          "name": "NotoSerifExtended_12.cpfont",
+          "size": 670413,
+          "crc32": 3660840704
+        },
+        {
+          "name": "NotoSerifExtended_14.cpfont",
+          "size": 838158,
+          "crc32": 912504977
+        },
+        {
+          "name": "NotoSerifExtended_16.cpfont",
+          "size": 1026830,
+          "crc32": 3329533755
+        },
+        {
+          "name": "NotoSerifExtended_18.cpfont",
+          "size": 1278327,
+          "crc32": 222592198
+        }
+      ]
+    },
+    {
+      "name": "NotoSerifJp",
+      "description": "Serif Japanese (JIS X 0213)",
+      "styles": [
+        "regular",
+        "bold"
+      ],
+      "files": [
+        {
+          "name": "NotoSerifJp_14.cpfont",
+          "size": 6376224,
+          "crc32": 2236757070
+        },
+        {
+          "name": "NotoSerifJp_16.cpfont",
+          "size": 7774021,
+          "crc32": 3509326915
+        },
+        {
+          "name": "NotoSerifJp_18.cpfont",
+          "size": 9729481,
+          "crc32": 3809882543
+        }
+      ]
+    },
+    {
+      "name": "OpenDyslexic",
+      "description": "Dyslexia-friendly font (Latin)",
+      "styles": [
+        "regular",
+        "bold",
+        "italic",
+        "bolditalic"
+      ],
+      "files": [
+        {
+          "name": "OpenDyslexic_10.cpfont",
+          "size": 357527,
+          "crc32": 2109674581
+        },
+        {
+          "name": "OpenDyslexic_12.cpfont",
+          "size": 467769,
+          "crc32": 3159687423
+        },
+        {
+          "name": "OpenDyslexic_14.cpfont",
+          "size": 597577,
+          "crc32": 1199647905
+        },
+        {
+          "name": "OpenDyslexic_8.cpfont",
+          "size": 264727,
+          "crc32": 3844334367
+        }
+      ]
+    },
+    {
+      "name": "SourceCodePro",
+      "description": "Adobe monospace with excellent hinting (Latin)",
+      "styles": [
+        "regular",
+        "bold",
+        "italic",
+        "bolditalic"
+      ],
+      "files": [
+        {
+          "name": "SourceCodePro_12.cpfont",
+          "size": 304503,
+          "crc32": 2463003795
+        },
+        {
+          "name": "SourceCodePro_14.cpfont",
+          "size": 386186,
+          "crc32": 51720762
+        },
+        {
+          "name": "SourceCodePro_16.cpfont",
+          "size": 475774,
+          "crc32": 938553036
+        },
+        {
+          "name": "SourceCodePro_18.cpfont",
+          "size": 582447,
+          "crc32": 4101324501
+        }
+      ]
+    },
+    {
+      "name": "SourceSans3",
+      "description": "Adobe humanist sans-serif (Latin, Greek, Cyrillic)",
+      "styles": [
+        "regular",
+        "bold",
+        "italic",
+        "bolditalic"
+      ],
+      "files": [
+        {
+          "name": "SourceSans3_12.cpfont",
+          "size": 639766,
+          "crc32": 2039069163
+        },
+        {
+          "name": "SourceSans3_14.cpfont",
+          "size": 776289,
+          "crc32": 1192546892
+        },
+        {
+          "name": "SourceSans3_16.cpfont",
+          "size": 934271,
+          "crc32": 2064968707
+        },
+        {
+          "name": "SourceSans3_18.cpfont",
+          "size": 1115275,
+          "crc32": 399268094
+        }
+      ]
+    },
+    {
+      "name": "SourceSerif4",
+      "description": "Adobe transitional serif (Latin, Greek, Cyrillic)",
+      "styles": [
+        "regular",
+        "bold",
+        "italic",
+        "bolditalic"
+      ],
+      "files": [
+        {
+          "name": "SourceSerif4_12.cpfont",
+          "size": 668337,
+          "crc32": 1670485403
+        },
+        {
+          "name": "SourceSerif4_14.cpfont",
+          "size": 825598,
+          "crc32": 4192713543
+        },
+        {
+          "name": "SourceSerif4_16.cpfont",
+          "size": 1001101,
+          "crc32": 49746604
+        },
+        {
+          "name": "SourceSerif4_18.cpfont",
+          "size": 1205175,
+          "crc32": 3098442902
+        }
+      ]
+    }
+  ]
+}
