@@ -10,14 +10,16 @@
 EpubReaderMenuActivity::EpubReaderMenuActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
                                                const std::string& title, const int currentPage, const int totalPages,
                                                const int bookProgressPercent, const uint8_t currentOrientation,
-                                               const bool hasFootnotes, const bool hasBookmarks)
+                                               const bool hasFootnotes, const bool hasBookmarks,
+                                               const bool verticalMode)
     : Activity("EpubReaderMenu", renderer, mappedInput),
       menuItems(buildMenuItems(hasFootnotes, hasBookmarks)),
       title(title),
       pendingOrientation(currentOrientation),
       currentPage(currentPage),
       totalPages(totalPages),
-      bookProgressPercent(bookProgressPercent) {}
+      bookProgressPercent(bookProgressPercent),
+      verticalMode(verticalMode) {}
 
 std::vector<EpubReaderMenuActivity::MenuItem> EpubReaderMenuActivity::buildMenuItems(bool hasFootnotes,
                                                                                      bool hasBookmarks) {

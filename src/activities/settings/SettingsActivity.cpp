@@ -11,6 +11,7 @@
 #include "ButtonRemapActivity.h"
 #include "ClearCacheActivity.h"
 #include "CrossPointSettings.h"
+#include "DirectionSettingsActivity.h"
 #include "FontDownloadActivity.h"
 #include "FontSelectionActivity.h"
 #include "KOReaderSettingsActivity.h"
@@ -68,8 +69,13 @@ void SettingsActivity::rebuildSettingsLists() {
   systemSettings.push_back(SettingInfo::Action(StrId::STR_SD_FIRMWARE_UPDATE, SettingAction::SdFirmwareUpdate));
   systemSettings.push_back(SettingInfo::Action(StrId::STR_LANGUAGE, SettingAction::Language));
   systemSettings.push_back(SettingInfo::Action(StrId::STR_AOZORA_BUNKO, SettingAction::AozoraBunko));
-  // Insert "Manage Fonts" right after the font family setting so users discover it naturally
+  // Direction-specific settings submenus at the top
+  readerSettings.insert(readerSettings.begin(),
+                        SettingInfo::Action(StrId::STR_HORIZONTAL_SETTINGS, SettingAction::HorizontalSettings));
   readerSettings.insert(readerSettings.begin() + 1,
+                        SettingInfo::Action(StrId::STR_VERTICAL_SETTINGS, SettingAction::VerticalSettings));
+  // Insert "Manage Fonts" right after the direction settings so users discover it naturally
+  readerSettings.insert(readerSettings.begin() + 2,
                         SettingInfo::Action(StrId::STR_MANAGE_FONTS, SettingAction::DownloadFonts));
   readerSettings.push_back(SettingInfo::Action(StrId::STR_CUSTOMISE_STATUS_BAR, SettingAction::CustomiseStatusBar));
 
@@ -115,6 +121,17 @@ void SettingsActivity::onExit() {
 }
 
 void SettingsActivity::loop() {
+  if (skipNextButtonCheck) {
+    const bool confirmCleared = !mappedInput.isPressed(MappedInputManager::Button::Confirm) &&
+                                !mappedInput.wasPressed(MappedInputManager::Button::Confirm);
+    const bool backCleared = !mappedInput.isPressed(MappedInputManager::Button::Back) &&
+                             !mappedInput.wasPressed(MappedInputManager::Button::Back);
+    if (confirmCleared && backCleared) {
+      skipNextButtonCheck = false;
+    }
+    return;
+  }
+
   bool hasChangedCategory = false;
 
   // Handle actions with early return
@@ -268,6 +285,22 @@ void SettingsActivity::toggleCurrentSetting() {
         break;
       case SettingAction::AozoraBunko:
         startActivityForResult(std::make_unique<AozoraActivity>(renderer, mappedInput), resultHandler);
+        break;
+      case SettingAction::HorizontalSettings:
+        startActivityForResult(std::make_unique<DirectionSettingsActivity>(renderer, mappedInput, false),
+                               [this](const ActivityResult&) {
+                                 skipNextButtonCheck = true;
+                                 rebuildSettingsLists();
+                                 requestUpdate();
+                               });
+        break;
+      case SettingAction::VerticalSettings:
+        startActivityForResult(std::make_unique<DirectionSettingsActivity>(renderer, mappedInput, true),
+                               [this](const ActivityResult&) {
+                                 skipNextButtonCheck = true;
+                                 rebuildSettingsLists();
+                                 requestUpdate();
+                               });
         break;
       case SettingAction::None:
         // Do nothing

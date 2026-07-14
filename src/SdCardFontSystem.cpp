@@ -7,9 +7,9 @@
 
 namespace {
 
-static uint8_t fontSizeEnumFromSettings() {
-  uint8_t e = SETTINGS.fontSize;
-  if (e >= CrossPointSettings::FONT_SIZE_COUNT) e = 1;  // default to MEDIUM
+static uint8_t fontSizeEnumFromSettings(bool isVertical) {
+  uint8_t e = SETTINGS.getDirectionSettings(isVertical).fontSize;
+  if (e >= CrossPointSettings::FONT_SIZE_COUNT) e = 1;
   return e;
 }
 
@@ -25,39 +25,36 @@ void SdCardFontSystem::begin(GfxRenderer& renderer) {
   };
   SETTINGS.sdFontResolverCtx = this;
 
-  // If user has a saved SD font selection, load it
-  if (SETTINGS.sdFontFamilyName[0] != '\0') {
-    const auto* family = registry_.findFamily(SETTINGS.sdFontFamilyName);
+  // Load the horizontal-direction SD font at startup
+  if (SETTINGS.horizontal.sdFontFamilyName[0] != '\0') {
+    const auto* family = registry_.findFamily(SETTINGS.horizontal.sdFontFamilyName);
     if (family) {
-      if (manager_.loadFamily(*family, renderer, fontSizeEnumFromSettings())) {
-        LOG_DBG("SDFS", "Loaded SD card font family: %s", SETTINGS.sdFontFamilyName);
+      if (manager_.loadFamily(*family, renderer, fontSizeEnumFromSettings(false))) {
+        LOG_DBG("SDFS", "Loaded SD card font family: %s", SETTINGS.horizontal.sdFontFamilyName);
       } else {
-        LOG_ERR("SDFS", "Failed to load SD font family: %s (clearing)", SETTINGS.sdFontFamilyName);
-        SETTINGS.sdFontFamilyName[0] = '\0';
+        LOG_ERR("SDFS", "Failed to load SD font family: %s (clearing)", SETTINGS.horizontal.sdFontFamilyName);
+        SETTINGS.horizontal.sdFontFamilyName[0] = '\0';
       }
     } else {
-      LOG_DBG("SDFS", "SD font family not found on card: %s (clearing)", SETTINGS.sdFontFamilyName);
-      SETTINGS.sdFontFamilyName[0] = '\0';
+      LOG_DBG("SDFS", "SD font family not found on card: %s (clearing)", SETTINGS.horizontal.sdFontFamilyName);
+      SETTINGS.horizontal.sdFontFamilyName[0] = '\0';
     }
   }
 
   LOG_DBG("SDFS", "SD font system ready (%d families discovered)", registry_.getFamilyCount());
 }
 
-void SdCardFontSystem::ensureLoaded(GfxRenderer& renderer) {
-  // If the web server (or another task) installed/deleted fonts, re-discover.
-  // Track whether we just re-discovered so we can force a reload below even
-  // when the wanted family/size still maps to the same point size — the file
-  // contents on disk may have changed (e.g. user re-uploaded a new build).
+void SdCardFontSystem::ensureLoaded(GfxRenderer& renderer, bool isVertical) {
   const bool registryWasDirty = registryDirty_.exchange(false, std::memory_order_acquire);
   if (registryWasDirty) {
     LOG_DBG("SDFS", "Registry dirty — re-discovering fonts");
     registry_.discover();
   }
 
-  const char* wantedFamily = SETTINGS.sdFontFamilyName;
+  auto& ds = SETTINGS.getDirectionSettings(isVertical);
+  const char* wantedFamily = ds.sdFontFamilyName;
   const std::string& currentFamily = manager_.currentFamilyName();
-  const uint8_t sizeEnum = fontSizeEnumFromSettings();
+  const uint8_t sizeEnum = fontSizeEnumFromSettings(isVertical);
 
   if (wantedFamily[0] == '\0') {
     if (!currentFamily.empty()) {
@@ -66,16 +63,13 @@ void SdCardFontSystem::ensureLoaded(GfxRenderer& renderer) {
     return;
   }
 
-  // Reload if family changed OR if the user-selected size maps to a
-  // different file than what's currently loaded OR if the registry was
-  // just rediscovered (file may have been replaced on disk).
   bool familyMatches = (currentFamily == wantedFamily);
   if (familyMatches) {
     const auto* family = registry_.findFamily(wantedFamily);
     if (!family) {
       LOG_DBG("SDFS", "SD font family disappeared: %s (clearing)", wantedFamily);
       manager_.unloadAll(renderer);
-      SETTINGS.sdFontFamilyName[0] = '\0';
+      ds.sdFontFamilyName[0] = '\0';
       return;
     }
     const auto* selected = family->findClosestReaderSize(sizeEnum);
@@ -95,11 +89,11 @@ void SdCardFontSystem::ensureLoaded(GfxRenderer& renderer) {
       LOG_DBG("SDFS", "Loaded SD font family: %s", wantedFamily);
     } else {
       LOG_ERR("SDFS", "Failed to load SD font family: %s (clearing)", wantedFamily);
-      SETTINGS.sdFontFamilyName[0] = '\0';
+      ds.sdFontFamilyName[0] = '\0';
     }
   } else {
     LOG_DBG("SDFS", "SD font family not found: %s (clearing)", wantedFamily);
-    SETTINGS.sdFontFamilyName[0] = '\0';
+    ds.sdFontFamilyName[0] = '\0';
   }
 }
 

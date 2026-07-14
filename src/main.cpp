@@ -210,6 +210,8 @@ void waitForPowerRelease() {
   }
 }
 
+void ensureSdFontLoaded(bool isVertical) { sdFontSystem.ensureLoaded(renderer, isVertical); }
+
 constexpr char SLEEP_FRAME_FILE[] = "/.crosspoint/sleep_frame.bin";
 
 static void saveSleepFrameBuffer() {

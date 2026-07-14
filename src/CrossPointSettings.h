@@ -202,7 +202,24 @@ class CrossPointSettings {
   // Set once an NTP sync succeeds. Used to skip re-syncing on every WiFi connect.
   // Resetting to 0 (e.g. via the web UI) forces a re-sync on next WiFi connect.
   uint8_t clockHasBeenSynced = 0;
-  // Text rendering settings
+  // Direction-specific settings for horizontal / vertical reading
+  struct DirectionSettings {
+    uint8_t fontFamily = NOTOSERIF;
+    char sdFontFamilyName[32] = "";
+    uint8_t fontSize = MEDIUM;
+    uint8_t lineSpacing = NORMAL;
+    uint8_t charSpacing = 0;
+    uint8_t paragraphAlignment = JUSTIFIED;
+    uint8_t extraParagraphSpacing = 0;
+    uint8_t hyphenationEnabled = 0;
+    uint8_t screenMargin = 5;
+    uint8_t firstLineIndent = 1;
+    uint8_t textAntiAliasing = 0;
+  };
+  DirectionSettings horizontal;
+  DirectionSettings vertical;
+
+  // Text rendering settings (kept for backward compat / migration)
   uint8_t extraParagraphSpacing = 1;
   uint8_t textAntiAliasing = 1;
   // Short power button click behaviour
@@ -287,10 +304,20 @@ class CrossPointSettings {
   SdFontIdResolver sdFontIdResolver = nullptr;
   void* sdFontResolverCtx = nullptr;
 
+  DirectionSettings& getDirectionSettings(bool isVertical) {
+    return isVertical ? vertical : horizontal;
+  }
+  const DirectionSettings& getDirectionSettings(bool isVertical) const {
+    return isVertical ? vertical : horizontal;
+  }
+
   uint16_t getPowerButtonDuration() const {
     return (shortPwrBtn == CrossPointSettings::SHORT_PWRBTN::SLEEP) ? 10 : 400;
   }
-  int getReaderFontId() const;
+  int getReaderFontId(bool isVertical = false) const;
+  int getHeadingFontId(int headingLevel, bool isVertical = false) const;
+  int getTableFontId(bool isVertical = false) const;
+  int getBuiltInReaderFontId(bool isVertical = false) const;
 
   // If count_only is true, returns the number of settings items that would be written.
   uint8_t writeSettings(HalFile& file, bool count_only = false) const;
@@ -306,7 +333,7 @@ class CrossPointSettings {
   bool migrateLanguageBinaryFile();
 
  public:
-  float getReaderLineCompression() const;
+  float getReaderLineCompression(bool isVertical = false) const;
   unsigned long getSleepTimeoutMs() const;
   int getRefreshFrequency() const;
 };

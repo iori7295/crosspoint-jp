@@ -142,12 +142,25 @@ bool JsonSettingsIO::saveSettings(const CrossPointSettings& s, const char* path)
   doc["frontButtonConfirm"] = s.frontButtonConfirm;
   doc["frontButtonLeft"] = s.frontButtonLeft;
   doc["frontButtonRight"] = s.frontButtonRight;
-  // Font family — uses dynamic getter/setter in SettingsList so the generic loop skips it.
-  doc["fontFamily"] = s.fontFamily;
-  // SD card font family name — not in SettingsList, save manually
-  if (s.sdFontFamilyName[0] != '\0') {
-    doc["sdFontFamilyName"] = s.sdFontFamilyName;
-  }
+
+  // Direction-specific settings (nested objects)
+  auto saveDirection = [](JsonObject obj, const CrossPointSettings::DirectionSettings& ds) {
+    obj["fontFamily"] = ds.fontFamily;
+    if (ds.sdFontFamilyName[0] != '\0') {
+      obj["sdFontFamilyName"] = ds.sdFontFamilyName;
+    }
+    obj["fontSize"] = ds.fontSize;
+    obj["lineSpacing"] = ds.lineSpacing;
+    obj["charSpacing"] = ds.charSpacing;
+    obj["paragraphAlignment"] = ds.paragraphAlignment;
+    obj["extraParagraphSpacing"] = ds.extraParagraphSpacing;
+    obj["hyphenationEnabled"] = ds.hyphenationEnabled;
+    obj["screenMargin"] = ds.screenMargin;
+    obj["firstLineIndent"] = ds.firstLineIndent;
+    obj["textAntiAliasing"] = ds.textAntiAliasing;
+  };
+  saveDirection(doc["horizontal"].to<JsonObject>(), s.horizontal);
+  saveDirection(doc["vertical"].to<JsonObject>(), s.vertical);
 
   // Language -- managed by LanguageSelectActivity, not in SettingsList.
   // Stored as ISO code string ("EN", "DE", ...) for stability across enum reorders.
@@ -243,20 +256,87 @@ bool JsonSettingsIO::loadSettings(CrossPointSettings& s, const char* json, bool*
       clamp(doc["frontButtonRight"] | (uint8_t)S::FRONT_HW_RIGHT, S::FRONT_BUTTON_HARDWARE_COUNT, S::FRONT_HW_RIGHT);
   CrossPointSettings::validateFrontButtonMapping(s);
 
-  // Font family — uses dynamic getter/setter in SettingsList so the generic loop skips it.
-  const uint8_t storedFontFamily = doc["fontFamily"] | (uint8_t)0;
-  s.fontFamily = clamp(storedFontFamily, CrossPointSettings::BUILTIN_FONT_COUNT, 0);
-  // SD card font family name — not in SettingsList, load manually
-  const char* sfn = doc["sdFontFamilyName"] | "";
-  strncpy(s.sdFontFamilyName, sfn, sizeof(s.sdFontFamilyName) - 1);
-  s.sdFontFamilyName[sizeof(s.sdFontFamilyName) - 1] = '\0';
-  if (storedFontFamily == CrossPointSettings::LEGACY_OPENDYSLEXIC && s.sdFontFamilyName[0] == '\0') {
-    s.fontFamily = CrossPointSettings::NOTOSERIF;
-    strncpy(s.sdFontFamilyName, "OpenDyslexic", sizeof(s.sdFontFamilyName) - 1);
-    s.sdFontFamilyName[sizeof(s.sdFontFamilyName) - 1] = '\0';
+  // Load direction-specific settings (nested objects)
+  auto loadDirection = [](JsonObject obj, CrossPointSettings::DirectionSettings& ds) -> bool {
+    if (obj.isNull()) return false;
+    ds.fontFamily = obj["fontFamily"] | ds.fontFamily;
+    if (ds.fontFamily >= CrossPointSettings::BUILTIN_FONT_COUNT) ds.fontFamily = 0;
+    const char* sfn = obj["sdFontFamilyName"] | "";
+    strncpy(ds.sdFontFamilyName, sfn, sizeof(ds.sdFontFamilyName) - 1);
+    ds.sdFontFamilyName[sizeof(ds.sdFontFamilyName) - 1] = '\0';
+    ds.fontSize = obj["fontSize"] | ds.fontSize;
+    if (ds.fontSize >= CrossPointSettings::FONT_SIZE_COUNT) ds.fontSize = 1;
+    ds.lineSpacing = obj["lineSpacing"] | ds.lineSpacing;
+    if (ds.lineSpacing < 80) ds.lineSpacing = 80;
+    if (ds.lineSpacing > 250) ds.lineSpacing = 250;
+    ds.charSpacing = obj["charSpacing"] | ds.charSpacing;
+    if (ds.charSpacing > 50) ds.charSpacing = 0;
+    ds.paragraphAlignment = obj["paragraphAlignment"] | ds.paragraphAlignment;
+    if (ds.paragraphAlignment >= CrossPointSettings::PARAGRAPH_ALIGNMENT_COUNT) ds.paragraphAlignment = 0;
+    ds.extraParagraphSpacing = obj["extraParagraphSpacing"] | ds.extraParagraphSpacing;
+    ds.hyphenationEnabled = obj["hyphenationEnabled"] | ds.hyphenationEnabled;
+    ds.screenMargin = obj["screenMargin"] | ds.screenMargin;
+    if (ds.screenMargin < 5) ds.screenMargin = 5;
+    if (ds.screenMargin > 40) ds.screenMargin = 40;
+    ds.firstLineIndent = obj["firstLineIndent"] | ds.firstLineIndent;
+    ds.textAntiAliasing = obj["textAntiAliasing"] | ds.textAntiAliasing;
+    return true;
+  };
+
+  if (!loadDirection(doc["horizontal"].as<JsonObject>(), s.horizontal)) {
+    // Migration from flat format: copy old values to both directions
+    auto migrateBoth = [&](const char* key, uint8_t CrossPointSettings::DirectionSettings::*field) {
+      uint8_t val = doc[key] | s.horizontal.*field;
+      s.horizontal.*field = val;
+      s.vertical.*field = val;
+    };
+    migrateBoth("extraParagraphSpacing", &CrossPointSettings::DirectionSettings::extraParagraphSpacing);
+    migrateBoth("textAntiAliasing", &CrossPointSettings::DirectionSettings::textAntiAliasing);
+    migrateBoth("paragraphAlignment", &CrossPointSettings::DirectionSettings::paragraphAlignment);
+    migrateBoth("hyphenationEnabled", &CrossPointSettings::DirectionSettings::hyphenationEnabled);
+    migrateBoth("screenMargin", &CrossPointSettings::DirectionSettings::screenMargin);
+    migrateBoth("fontSize", &CrossPointSettings::DirectionSettings::fontSize);
+    // fontFamily
+    uint8_t ff = doc["fontFamily"] | (uint8_t)0;
+    if (ff >= CrossPointSettings::BUILTIN_FONT_COUNT && ff != CrossPointSettings::LEGACY_OPENDYSLEXIC) ff = 0;
+    if (ff == CrossPointSettings::LEGACY_OPENDYSLEXIC) {
+      ff = CrossPointSettings::NOTOSERIF;
+      strncpy(s.horizontal.sdFontFamilyName, "OpenDyslexic", sizeof(s.horizontal.sdFontFamilyName) - 1);
+      s.horizontal.sdFontFamilyName[sizeof(s.horizontal.sdFontFamilyName) - 1] = '\0';
+      strncpy(s.vertical.sdFontFamilyName, "OpenDyslexic", sizeof(s.vertical.sdFontFamilyName) - 1);
+      s.vertical.sdFontFamilyName[sizeof(s.vertical.sdFontFamilyName) - 1] = '\0';
+    } else {
+      const char* sfn = doc["sdFontFamilyName"] | "";
+      strncpy(s.horizontal.sdFontFamilyName, sfn, sizeof(s.horizontal.sdFontFamilyName) - 1);
+      s.horizontal.sdFontFamilyName[sizeof(s.horizontal.sdFontFamilyName) - 1] = '\0';
+      strncpy(s.vertical.sdFontFamilyName, sfn, sizeof(s.vertical.sdFontFamilyName) - 1);
+      s.vertical.sdFontFamilyName[sizeof(s.vertical.sdFontFamilyName) - 1] = '\0';
+    }
+    s.horizontal.fontFamily = ff;
+    s.vertical.fontFamily = ff;
+    // lineSpacing (use the single legacy value for both)
+    if (!doc["lineSpacing"].isNull()) {
+      uint8_t ls = doc["lineSpacing"] | 185;
+      if (ls >= CrossPointSettings::LINE_COMPRESSION_COUNT) ls = 185;
+      s.horizontal.lineSpacing = ls;
+      s.vertical.lineSpacing = ls;
+    }
+    // Clamp migrated values
+    auto clampDs = [](CrossPointSettings::DirectionSettings& d) {
+      if (d.fontFamily >= CrossPointSettings::BUILTIN_FONT_COUNT) d.fontFamily = 0;
+      if (d.fontSize >= CrossPointSettings::FONT_SIZE_COUNT) d.fontSize = 1;
+      if (d.lineSpacing < 80) d.lineSpacing = 80;
+      if (d.lineSpacing > 250) d.lineSpacing = 250;
+      if (d.charSpacing > 50) d.charSpacing = 0;
+      if (d.paragraphAlignment >= CrossPointSettings::PARAGRAPH_ALIGNMENT_COUNT) d.paragraphAlignment = 0;
+      if (d.screenMargin < 5) d.screenMargin = 5;
+      if (d.screenMargin > 40) d.screenMargin = 40;
+    };
+    clampDs(s.horizontal);
+    clampDs(s.vertical);
     if (needsResave) *needsResave = true;
-  } else if (storedFontFamily >= CrossPointSettings::BUILTIN_FONT_COUNT) {
-    if (needsResave) *needsResave = true;
+  } else {
+    loadDirection(doc["vertical"].as<JsonObject>(), s.vertical);
   }
 
   // Language -- stored as code string for stability across enum reorders.

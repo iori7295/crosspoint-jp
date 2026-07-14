@@ -24,6 +24,8 @@ enum class SettingAction {
   Language,
   DownloadFonts,
   AozoraBunko,
+  HorizontalSettings,
+  VerticalSettings,
 };
 
 struct SettingInfo {
@@ -159,6 +161,8 @@ class SettingsActivity final : public Activity {
 
   bool preserveQuickResumeTimeoutOn = false;
   bool quickResumeTimeoutAutoEnabled = false;
+
+  bool skipNextButtonCheck = false;
 
   static constexpr int categoryCount = 4;
   static const StrId categoryNames[categoryCount];

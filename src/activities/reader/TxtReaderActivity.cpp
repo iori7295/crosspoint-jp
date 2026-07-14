@@ -97,9 +97,9 @@ void TxtReaderActivity::initializeReader() {
   }
 
   // Store current settings for cache validation
-  cachedFontId = SETTINGS.getReaderFontId();
-  cachedScreenMargin = SETTINGS.screenMargin;
-  cachedParagraphAlignment = SETTINGS.paragraphAlignment;
+  cachedFontId = SETTINGS.getReaderFontId(false);
+  cachedScreenMargin = SETTINGS.horizontal.screenMargin;
+  cachedParagraphAlignment = SETTINGS.horizontal.paragraphAlignment;
 
   // Calculate viewport dimensions
   renderer.getOrientedViewableTRBL(&cachedOrientedMarginTop, &cachedOrientedMarginRight, &cachedOrientedMarginBottom,
@@ -406,7 +406,7 @@ void TxtReaderActivity::renderPage() {
 
   ReaderUtils::displayWithRefreshCycle(renderer, pagesUntilFullRefresh);
 
-  if (SETTINGS.textAntiAliasing) {
+  if (SETTINGS.horizontal.textAntiAliasing) {
     ReaderUtils::renderAntiAliased(renderer, [&renderLines]() { renderLines(); });
   }
   // scope destructor clears font cache via FontCacheManager

@@ -282,10 +282,10 @@ bool CrossPointSettings::loadFromBinaryFile() {
   return true;
 }
 
-float CrossPointSettings::getReaderLineCompression() const {
-  // SD card fonts use same compression as Bookerly (the most neutral values)
-  if (sdFontFamilyName[0] != '\0') {
-    switch (lineSpacing) {
+float CrossPointSettings::getReaderLineCompression(const bool isVertical) const {
+  const auto& ds = isVertical ? vertical : horizontal;
+  if (ds.sdFontFamilyName[0] != '\0') {
+    switch (ds.lineSpacing) {
       case TIGHT:
         return 0.95f;
       case NORMAL:
@@ -296,10 +296,10 @@ float CrossPointSettings::getReaderLineCompression() const {
     }
   }
 
-  switch (fontFamily) {
+  switch (ds.fontFamily) {
     case NOTOSERIF:
     default:
-      switch (lineSpacing) {
+      switch (ds.lineSpacing) {
         case TIGHT:
           return 0.95f;
         case NORMAL:
@@ -309,7 +309,7 @@ float CrossPointSettings::getReaderLineCompression() const {
           return 1.1f;
       }
     case NOTOSANS:
-      switch (lineSpacing) {
+      switch (ds.lineSpacing) {
         case TIGHT:
           return 0.90f;
         case NORMAL:
@@ -344,18 +344,17 @@ int CrossPointSettings::getRefreshFrequency() const {
   }
 }
 
-int CrossPointSettings::getReaderFontId() const {
-  // Check SD card font first
-  if (sdFontFamilyName[0] != '\0' && sdFontIdResolver) {
-    int id = sdFontIdResolver(sdFontResolverCtx, sdFontFamilyName, fontSize);
+int CrossPointSettings::getReaderFontId(const bool isVertical) const {
+  const auto& ds = isVertical ? vertical : horizontal;
+  if (ds.sdFontFamilyName[0] != '\0' && sdFontIdResolver) {
+    int id = sdFontIdResolver(sdFontResolverCtx, ds.sdFontFamilyName, ds.fontSize);
     if (id != 0) return id;
-    // Fall through to built-in if SD font not found
   }
 
-  switch (fontFamily) {
+  switch (ds.fontFamily) {
     case NOTOSERIF:
     default:
-      switch (fontSize) {
+      switch (ds.fontSize) {
         case SMALL:
           return NOTOSERIF_12_FONT_ID;
         case MEDIUM:
@@ -367,7 +366,7 @@ int CrossPointSettings::getReaderFontId() const {
           return NOTOSERIF_18_FONT_ID;
       }
     case NOTOSANS:
-      switch (fontSize) {
+      switch (ds.fontSize) {
         case SMALL:
           return NOTOSANS_12_FONT_ID;
         case MEDIUM:
@@ -378,5 +377,101 @@ int CrossPointSettings::getReaderFontId() const {
         case EXTRA_LARGE:
           return NOTOSANS_18_FONT_ID;
       }
+  }
+}
+
+int CrossPointSettings::getHeadingFontId(const int headingLevel, const bool isVertical) const {
+  const auto& ds = isVertical ? vertical : horizontal;
+  uint8_t sizeStep = 0;
+  if (headingLevel == 1) {
+    sizeStep = 2;
+  } else if (headingLevel == 2) {
+    sizeStep = 1;
+  }
+  if (sizeStep == 0) return 0;
+
+  const uint8_t headingSize = std::min<uint8_t>(ds.fontSize + sizeStep, EXTRA_LARGE);
+  if (headingSize == ds.fontSize) return 0;
+
+  if (ds.sdFontFamilyName[0] != '\0' && sdFontIdResolver) {
+    int id = sdFontIdResolver(sdFontResolverCtx, ds.sdFontFamilyName, headingSize);
+    if (id != 0) return id;
+  }
+
+  switch (ds.fontFamily) {
+    case NOTOSERIF:
+    default:
+      switch (headingSize) {
+        case SMALL:
+          return NOTOSERIF_12_FONT_ID;
+        case MEDIUM:
+        default:
+          return NOTOSERIF_14_FONT_ID;
+        case LARGE:
+          return NOTOSERIF_16_FONT_ID;
+        case EXTRA_LARGE:
+          return NOTOSERIF_18_FONT_ID;
+      }
+    case NOTOSANS:
+      switch (headingSize) {
+        case SMALL:
+          return NOTOSANS_12_FONT_ID;
+        case MEDIUM:
+        default:
+          return NOTOSANS_14_FONT_ID;
+        case LARGE:
+          return NOTOSANS_16_FONT_ID;
+        case EXTRA_LARGE:
+          return NOTOSANS_18_FONT_ID;
+      }
+  }
+}
+
+int CrossPointSettings::getBuiltInReaderFontId(const bool isVertical) const {
+  const auto& ds = isVertical ? vertical : horizontal;
+  switch (ds.fontFamily) {
+    case NOTOSERIF:
+    default:
+      return NOTOSERIF_14_FONT_ID;
+    case NOTOSANS:
+      return NOTOSANS_14_FONT_ID;
+  }
+}
+
+int CrossPointSettings::getTableFontId(const bool isVertical) const {
+  const auto& ds = isVertical ? vertical : horizontal;
+  const uint8_t tableSize = (ds.fontSize > SMALL) ? static_cast<uint8_t>(ds.fontSize - 1) : SMALL;
+  if (ds.sdFontFamilyName[0] != '\0' && sdFontIdResolver) {
+    int id = sdFontIdResolver(sdFontResolverCtx, ds.sdFontFamilyName, tableSize);
+    if (id != 0) return id;
+  }
+  switch (ds.fontFamily) {
+    case NOTOSERIF:
+    default: {
+      switch (tableSize) {
+        case SMALL:
+        default:
+          return NOTOSERIF_12_FONT_ID;
+        case MEDIUM:
+          return NOTOSERIF_14_FONT_ID;
+        case LARGE:
+          return NOTOSERIF_16_FONT_ID;
+        case EXTRA_LARGE:
+          return NOTOSERIF_18_FONT_ID;
+      }
+    }
+    case NOTOSANS: {
+      switch (tableSize) {
+        case SMALL:
+        default:
+          return NOTOSANS_12_FONT_ID;
+        case MEDIUM:
+          return NOTOSANS_14_FONT_ID;
+        case LARGE:
+          return NOTOSANS_16_FONT_ID;
+        case EXTRA_LARGE:
+          return NOTOSANS_18_FONT_ID;
+      }
+    }
   }
 }
