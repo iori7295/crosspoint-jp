@@ -559,6 +559,10 @@ void ParsedText::layoutAndExtractLines(const GfxRenderer& renderer, const int fo
     wordContinues.erase(wordContinues.begin(), wordContinues.begin() + consumed);
     wordNoSpaceBefore.erase(wordNoSpaceBefore.begin(), wordNoSpaceBefore.begin() + consumed);
     wordIsFocusSuffix.erase(wordIsFocusSuffix.begin(), wordIsFocusSuffix.begin() + consumed);
+    if (!rubyTexts.empty()) {
+      const size_t rtConsumed = std::min(consumed, static_cast<size_t>(rubyTexts.size()));
+      rubyTexts.erase(rubyTexts.begin(), rubyTexts.begin() + rtConsumed);
+    }
   }
 }
 
@@ -611,9 +615,10 @@ void ParsedText::layoutVerticalColumns(
         y += wordHeights[j];
       }
 
+      std::vector<std::string> colRubyTexts(rubyTexts.begin() + columnStart, rubyTexts.begin() + i);
       processColumn(std::make_shared<TextBlock>(std::move(colWords), std::move(colXpos), std::move(colStyles),
                                                 std::vector<uint8_t>{}, std::vector<uint16_t>{}, blockStyle,
-                                                std::move(colYpos), true));
+                                                std::move(colYpos), true, std::move(colRubyTexts)));
 
       columnStart = i;
       currentY = 0;
@@ -635,9 +640,10 @@ void ParsedText::layoutVerticalColumns(
       y += wordHeights[j];
     }
 
+    std::vector<std::string> colRubyTexts(rubyTexts.begin() + columnStart, rubyTexts.end());
     processColumn(std::make_shared<TextBlock>(std::move(colWords), std::move(colXpos), std::move(colStyles),
                                               std::vector<uint8_t>{}, std::vector<uint16_t>{}, blockStyle,
-                                              std::move(colYpos), true));
+                                              std::move(colYpos), true, std::move(colRubyTexts)));
   }
 
   words.clear();
@@ -646,6 +652,7 @@ void ParsedText::layoutVerticalColumns(
   wordNoSpaceBefore.clear();
   wordIsFocusSuffix.clear();
   wordVerticalBehaviors.clear();
+  rubyTexts.clear();
 }
 
 std::vector<uint16_t> ParsedText::calculateWordWidths(const GfxRenderer& renderer, const int fontId) {
@@ -1248,8 +1255,10 @@ void ParsedText::extractLine(const size_t breakIndex, const int pageWidth, const
   }
 
   if (!lineHasFocusSplit) {
+    std::vector<std::string> lineRubyTexts(rubyTexts.begin() + lastBreakAt, rubyTexts.begin() + lineBreak);
     processLine(std::make_shared<TextBlock>(std::move(lineWords), std::move(lineXPos), std::move(lineWordStyles),
-                                            std::vector<uint8_t>{}, std::vector<uint16_t>{}, blockStyle));
+                                            std::vector<uint8_t>{}, std::vector<uint16_t>{}, blockStyle,
+                                            std::vector<int16_t>{}, false, std::move(lineRubyTexts)));
     return;
   }
 
@@ -1294,6 +1303,8 @@ void ParsedText::extractLine(const size_t breakIndex, const int pageWidth, const
     }
   }
 
+  std::vector<std::string> lineRubyTexts(rubyTexts.begin() + lastBreakAt, rubyTexts.begin() + lineBreak);
   processLine(std::make_shared<TextBlock>(std::move(outWords), std::move(outXPos), std::move(outStyles),
-                                          std::move(outBoundaries), std::move(outSuffixX), blockStyle));
+                                          std::move(outBoundaries), std::move(outSuffixX), blockStyle,
+                                          std::vector<int16_t>{}, false, std::move(lineRubyTexts)));
 }

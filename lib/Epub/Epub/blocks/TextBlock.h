@@ -28,13 +28,16 @@ class TextBlock final : public Block {
   std::vector<uint16_t> wordFocusSuffixX;
   std::vector<int16_t> wordYpos;
   bool isVertical = false;
+  std::vector<std::string> rubyTexts;
   BlockStyle blockStyle;
 
  public:
+  static int rubyFontId;
   explicit TextBlock(std::vector<std::string> words, std::vector<int16_t> word_xpos,
                      std::vector<EpdFontFamily::Style> word_styles, std::vector<uint8_t> focus_boundary,
                      std::vector<uint16_t> focus_suffix_x, const BlockStyle& blockStyle = BlockStyle(),
-                     std::vector<int16_t> word_ypos = {}, bool vertical = false)
+                     std::vector<int16_t> word_ypos = {}, bool vertical = false,
+                     std::vector<std::string> ruby_texts = {})
       : words(std::move(words)),
         wordXpos(std::move(word_xpos)),
         wordStyles(std::move(word_styles)),
@@ -42,6 +45,7 @@ class TextBlock final : public Block {
         wordFocusSuffixX(std::move(focus_suffix_x)),
         wordYpos(std::move(word_ypos)),
         isVertical(vertical),
+        rubyTexts(std::move(ruby_texts)),
         blockStyle(blockStyle) {}
   ~TextBlock() override = default;
   void setBlockStyle(const BlockStyle& blockStyle) { this->blockStyle = blockStyle; }
@@ -49,6 +53,8 @@ class TextBlock final : public Block {
   const std::vector<std::string>& getWords() const { return words; }
   const std::vector<int16_t>& getWordYpos() const { return wordYpos; }
   bool getIsVertical() const { return isVertical; }
+  bool hasRuby() const;
+  const std::vector<std::string>& getRubyTexts() const { return rubyTexts; }
   bool isEmpty() override { return words.empty(); }
   size_t wordCount() const { return words.size(); }
   // given a renderer works out where to break the words into lines

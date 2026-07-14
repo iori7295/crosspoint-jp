@@ -44,6 +44,12 @@ inline bool utf8IsCjkBreakable(const uint32_t cp) {
          || (cp >= 0x2A700 && cp <= 0x2B73F);  // CJK Extension C
 }
 
+// 日本語仮名の濁点(U+3099)・半濁点(U+309A)をin-placeでNFC合成する。
+// macOS等がNFD形式で書き込んだファイル名を正規化するために使用。
+void utf8NfcNormalizeKana(std::string& str);
+
+int utf8CodepointLen(unsigned char c);
+
 // Returns true for Unicode combining diacritical marks that should not advance the cursor.
 inline bool utf8IsCombiningMark(const uint32_t cp) {
   return (cp >= 0x0300 && cp <= 0x036F)      // Combining Diacritical Marks

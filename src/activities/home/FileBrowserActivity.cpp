@@ -1,6 +1,7 @@
 #include "FileBrowserActivity.h"
 
 #include <FsHelpers.h>
+#include <Utf8.h>
 #include <GfxRenderer.h>
 #include <HalStorage.h>
 #include <I18n.h>
@@ -325,6 +326,7 @@ void FileBrowserActivity::loop() {
 }
 
 std::string getFileName(std::string filename) {
+  utf8NfcNormalizeKana(filename);
   if (filename.back() == '/') {
     filename.pop_back();
     if (!UITheme::getInstance().getTheme().showsFileIcons()) {

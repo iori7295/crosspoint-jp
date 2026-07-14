@@ -12,7 +12,7 @@
 namespace {
 // v29: ruby text data added to TextBlock serialization.
 // v31: added charSpacing for direction-specific cache validation.
-constexpr uint8_t SECTION_FILE_VERSION = 31;
+constexpr uint8_t SECTION_FILE_VERSION = 32;
 constexpr uint32_t HEADER_SIZE = sizeof(uint8_t) + sizeof(int) + sizeof(float) + sizeof(bool) + sizeof(uint8_t) +
                                  sizeof(uint16_t) + sizeof(uint16_t) + sizeof(uint16_t) + sizeof(bool) + sizeof(bool) +
                                  sizeof(uint8_t) + sizeof(bool) + sizeof(bool) + sizeof(uint8_t) +  // charSpacing

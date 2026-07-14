@@ -624,7 +624,8 @@ void EpubReaderActivity::onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction 
           uint16_t backupPageCount = section->pageCount;
           section.reset();
           epub->clearCache();
-          epub->setupCacheDir();
+  TextBlock::rubyFontId = SMALL_FONT_ID;
+  epub->setupCacheDir();
           if (!saveProgress(backupSpine, backupPage, backupPageCount)) {
             LOG_ERR("ERS", "Failed to save progress before cache clear");
           }

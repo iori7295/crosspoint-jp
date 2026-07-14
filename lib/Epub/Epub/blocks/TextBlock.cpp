@@ -7,12 +7,18 @@
 
 #include <cstring>
 
+int TextBlock::rubyFontId = -1;
+
 void TextBlock::render(const GfxRenderer& renderer, const int fontId, const int x, const int y) const {
   if (isVertical) {
     for (size_t i = 0; i < words.size(); i++) {
       const int wordX = wordXpos.empty() ? x : wordXpos[i] + x;
       const int wordY = (i < wordYpos.size()) ? y + wordYpos[i] : y;
       renderer.drawTextVertical(fontId, wordX, wordY, words[i].c_str(), true, wordStyles[i]);
+      if (i < rubyTexts.size() && !rubyTexts[i].empty() && rubyFontId >= 0) {
+        const int rubyX = wordX + renderer.getLineHeight(fontId);
+        renderer.drawTextVertical(rubyFontId, rubyX, wordY, rubyTexts[i].c_str(), true, EpdFontFamily::REGULAR);
+      }
     }
     return;
   }
@@ -58,6 +64,14 @@ void TextBlock::render(const GfxRenderer& renderer, const int fontId, const int 
       renderer.drawText(fontId, wordX, wordY, words[i].c_str(), true, currentStyle, baseDir);
     }
 
+    if (i < rubyTexts.size() && !rubyTexts[i].empty() && rubyFontId >= 0) {
+      const int baseWidth = renderer.getTextAdvanceX(fontId, words[i].c_str(), currentStyle);
+      const int rubyWidth = renderer.getTextWidth(rubyFontId, rubyTexts[i].c_str(), EpdFontFamily::REGULAR);
+      const int rubyX = wordX + (baseWidth - rubyWidth) / 2;
+      const int rubyY = wordY - renderer.getLineHeight(rubyFontId) - 1;
+      renderer.drawText(rubyFontId, rubyX, rubyY, rubyTexts[i].c_str(), true, EpdFontFamily::REGULAR);
+    }
+
     if (!scanning && (currentStyle & EpdFontFamily::UNDERLINE) != 0) {
       const std::string& w = words[i];
       int underlineWidth = renderer.getTextWidth(fontId, w.c_str(), currentStyle, baseDir);
@@ -70,6 +84,13 @@ void TextBlock::render(const GfxRenderer& renderer, const int fontId, const int 
       renderer.drawLine(wordX, underlineY, wordX + underlineWidth, underlineY, true);
     }
   }
+}
+
+bool TextBlock::hasRuby() const {
+  for (const auto& rt : rubyTexts) {
+    if (!rt.empty()) return true;
+  }
+  return false;
 }
 
 bool TextBlock::serialize(HalFile& file) const {
@@ -117,6 +138,10 @@ bool TextBlock::serialize(HalFile& file) const {
   serialization::writePod(file, isVertical);
   if (isVertical) {
     for (auto y : wordYpos) serialization::writePod(file, y);
+  }
+
+  for (size_t i = 0; i < words.size(); i++) {
+    serialization::writeString(file, (i < rubyTexts.size()) ? rubyTexts[i] : std::string());
   }
 
   return true;
@@ -182,7 +207,10 @@ std::unique_ptr<TextBlock> TextBlock::deserialize(HalFile& file) {
     for (auto& y : wordYpos) serialization::readPod(file, y);
   }
 
+  std::vector<std::string> rubyTexts(wc);
+  for (auto& rt : rubyTexts) serialization::readString(file, rt);
+
   return std::unique_ptr<TextBlock>(new TextBlock(std::move(words), std::move(wordXpos), std::move(wordStyles),
                                                   std::move(wordFocusBoundary), std::move(wordFocusSuffixX),
-                                                  blockStyle, std::move(wordYpos), vertical));
+                                                  blockStyle, std::move(wordYpos), vertical, std::move(rubyTexts)));
 }
