@@ -129,6 +129,10 @@ typedef struct {
   uint8_t kernRightClassCount;           ///< Number of distinct right classes (matrix cols)
   const EpdLigaturePair* ligaturePairs;  ///< Sorted ligature pair table (nullptr if none)
   uint32_t ligaturePairCount;            ///< Number of entries in ligaturePairs
+  const uint32_t* vertCodepoints;        ///< Sorted vertical substitute codepoints (nullptr if none)
+  const EpdGlyph* vertGlyphs;            ///< Vertical substitute glyphs
+  const uint8_t* vertBitmaps;            ///< Concatenated vert glyph bitmap data
+  uint16_t vertCount;                    ///< Number of vert substitution entries (0 if none)
 
   /// On-demand glyph loading for fonts that don't keep all glyphs in RAM (e.g. SD card fonts).
   /// Called by getGlyph() when a codepoint is not found in the interval table.

@@ -5681,4 +5681,8 @@ static const EpdFontData notoserif_18_italic = {
     90,
     notoserif_18_italicLigaturePairs,
     5,
+    nullptr,
+    nullptr,
+    nullptr,
+    0,
 };

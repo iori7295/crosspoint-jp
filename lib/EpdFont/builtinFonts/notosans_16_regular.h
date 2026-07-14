@@ -4395,4 +4395,8 @@ static const EpdFontData notosans_16_regular = {
     76,
     notosans_16_regularLigaturePairs,
     5,
+    nullptr,
+    nullptr,
+    nullptr,
+    0,
 };

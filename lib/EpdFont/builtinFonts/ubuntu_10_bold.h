@@ -3535,4 +3535,8 @@ static const EpdFontData ubuntu_10_bold = {
     155,
     ubuntu_10_boldLigaturePairs,
     5,
+    nullptr,
+    nullptr,
+    nullptr,
+    0,
 };

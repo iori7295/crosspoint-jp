@@ -4979,4 +4979,8 @@ static const EpdFontData notosans_18_bold = {
     76,
     notosans_18_boldLigaturePairs,
     5,
+    nullptr,
+    nullptr,
+    nullptr,
+    0,
 };

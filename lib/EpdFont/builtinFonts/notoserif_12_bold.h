@@ -3850,4 +3850,8 @@ static const EpdFontData notoserif_12_bold = {
     65,
     notoserif_12_boldLigaturePairs,
     5,
+    nullptr,
+    nullptr,
+    nullptr,
+    0,
 };

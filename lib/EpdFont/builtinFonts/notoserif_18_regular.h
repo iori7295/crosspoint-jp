@@ -4839,4 +4839,8 @@ static const EpdFontData notoserif_18_regular = {
     66,
     notoserif_18_regularLigaturePairs,
     5,
+    nullptr,
+    nullptr,
+    nullptr,
+    0,
 };

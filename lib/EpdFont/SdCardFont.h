@@ -93,6 +93,9 @@ class SdCardFont {
   // Extract SdCardFont* from an opaque glyphMissCtx pointer.
   // Used by GfxRenderer::getGlyphBitmap() to recover the SdCardFont from EpdFontData::glyphMissCtx.
   static SdCardFont* fromMissCtx(void* ctx);
+  const EpdGlyph* getVertGlyph(uint32_t codepoint, uint8_t style = 0) const;
+  const uint8_t* getVertBitmap(const EpdGlyph* vertGlyph, uint8_t style = 0) const;
+  bool hasVertData() const;
 
   struct Stats {
     uint32_t prewarmTotalMs = 0;
@@ -136,6 +139,8 @@ class SdCardFont {
     uint32_t kernRightFileOffset = 0;
     uint32_t kernMatrixFileOffset = 0;
     uint32_t ligatureFileOffset = 0;
+    uint32_t vertSectionOffset = 0;
+    uint16_t vertCount = 0;
     uint32_t bitmapFileOffset = 0;
 
     // Full intervals loaded from file (kept in RAM for codepoint lookup)
@@ -159,6 +164,10 @@ class SdCardFont {
     EpdKernClassEntry* kernRightClasses = nullptr;
     EpdLigaturePair* ligaturePairs = nullptr;
     bool kernLigLoaded = false;
+    uint32_t* vertCodepoints = nullptr;
+    EpdGlyph* vertGlyphs = nullptr;
+    uint8_t* vertBitmap = nullptr;
+    bool vertLoaded = false;
 
     // Stub EpdFontData returned when not prewarmed
     EpdFontData stubData{};

@@ -4379,4 +4379,8 @@ static const EpdFontData notosans_14_italic = {
     83,
     notosans_14_italicLigaturePairs,
     5,
+    nullptr,
+    nullptr,
+    nullptr,
+    0,
 };

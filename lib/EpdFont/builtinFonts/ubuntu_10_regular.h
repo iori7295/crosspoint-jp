@@ -3185,4 +3185,8 @@ static const EpdFontData ubuntu_10_regular = {
     158,
     ubuntu_10_regularLigaturePairs,
     5,
+    nullptr,
+    nullptr,
+    nullptr,
+    0,
 };
