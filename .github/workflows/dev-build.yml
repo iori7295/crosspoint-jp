@@ -39,6 +39,9 @@ jobs:
       - name: Install PlatformIO Core
         run: uv pip install --system -U https://github.com/pioarduino/platformio-core/archive/refs/tags/v6.1.19.zip
 
+      - name: Generate i18n
+        run: python3 scripts/gen_i18n.py lib/I18n/translations lib/I18n/
+
       - name: Build
         run: |
           set -euo pipefail
