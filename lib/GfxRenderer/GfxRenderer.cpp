@@ -6,6 +6,7 @@
 #include <Logging.h>
 #include <SdCardFont.h>
 #include <Utf8.h>
+#include "VerticalTextUtils.h"
 
 #include <algorithm>
 
@@ -1747,6 +1748,46 @@ void GfxRenderer::drawTextRotated90CW(const int fontId, const int x, const int y
 
     renderCharImpl<TextRotation::Rotated90CW>(*this, renderMode, font, cp, x, lastBaseY, black, style);
     prevCp = cp;
+  }
+}
+
+void GfxRenderer::drawTextVertical(const int fontId, const int x, const int y, const char* text, const bool black,
+                                   const EpdFontFamily::Style style) const {
+  if (text == nullptr || *text == '\0') return;
+  if (fontCacheManager_ && fontCacheManager_->isScanning()) {
+    fontCacheManager_->recordText(text, fontId, style);
+    return;
+  }
+
+  const auto fontIt = fontMap.find(fontId);
+  if (fontIt == fontMap.end()) return;
+  const auto& font = fontIt->second;
+
+  const int lineHeight = getLineHeight(fontId);
+  int yPos = y;
+  const unsigned char* readPtr = reinterpret_cast<const unsigned char*>(text);
+
+  while (*readPtr) {
+    const unsigned char* charStart = readPtr;
+    uint32_t cp = utf8NextCodepoint(&readPtr);
+    if (cp == 0) break;
+
+    size_t charLen = static_cast<size_t>(readPtr - charStart);
+    char charBuf[5] = {0};
+    memcpy(charBuf, charStart, std::min(charLen, sizeof(charBuf) - 1));
+
+    const auto* punctOffset = VerticalTextUtils::getVerticalPunctuationOffset(cp);
+
+    if (punctOffset && punctOffset->rotate) {
+      drawTextRotated90CW(fontId, x, yPos, charBuf, black, style);
+    } else if (punctOffset) {
+      int dx = punctOffset->dxEighths * lineHeight / 8;
+      int dy = punctOffset->dyEighths * lineHeight / 8;
+      drawText(fontId, x + dx, yPos + dy, charBuf, black, style);
+    } else {
+      drawText(fontId, x, yPos, charBuf, black, style);
+    }
+    yPos += lineHeight;
   }
 }
 

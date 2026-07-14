@@ -115,6 +115,8 @@ class CrossPointSettings {
     PARAGRAPH_ALIGNMENT_COUNT
   };
 
+  enum WRITING_MODE { WM_AUTO = 0, WM_HORIZONTAL = 1, WM_VERTICAL = 2, WRITING_MODE_COUNT };
+
   // Auto-sleep timeout options (in minutes)
   enum SLEEP_TIMEOUT {
     SLEEP_1_MIN = 0,
@@ -222,6 +224,7 @@ class CrossPointSettings {
   uint8_t fontFamily = NOTOSERIF;
   uint8_t fontSize = MEDIUM;
   uint8_t lineSpacing = NORMAL;
+  uint8_t writingMode = WM_AUTO;
   uint8_t paragraphAlignment = JUSTIFIED;
   // Auto-sleep timeout setting (default 10 minutes). Legacy sleepTimeout enum values are migration-only.
   uint8_t sleepTimeoutMinutes = 10;

@@ -26,22 +26,29 @@ class TextBlock final : public Block {
   // Eliminates getTextAdvanceX from the render path. 0 when boundary == 0.
   // Empty in lockstep with wordFocusBoundary.
   std::vector<uint16_t> wordFocusSuffixX;
+  std::vector<int16_t> wordYpos;
+  bool isVertical = false;
   BlockStyle blockStyle;
 
  public:
   explicit TextBlock(std::vector<std::string> words, std::vector<int16_t> word_xpos,
                      std::vector<EpdFontFamily::Style> word_styles, std::vector<uint8_t> focus_boundary,
-                     std::vector<uint16_t> focus_suffix_x, const BlockStyle& blockStyle = BlockStyle())
+                     std::vector<uint16_t> focus_suffix_x, const BlockStyle& blockStyle = BlockStyle(),
+                     std::vector<int16_t> word_ypos = {}, bool vertical = false)
       : words(std::move(words)),
         wordXpos(std::move(word_xpos)),
         wordStyles(std::move(word_styles)),
         wordFocusBoundary(std::move(focus_boundary)),
         wordFocusSuffixX(std::move(focus_suffix_x)),
+        wordYpos(std::move(word_ypos)),
+        isVertical(vertical),
         blockStyle(blockStyle) {}
   ~TextBlock() override = default;
   void setBlockStyle(const BlockStyle& blockStyle) { this->blockStyle = blockStyle; }
   const BlockStyle& getBlockStyle() const { return blockStyle; }
   const std::vector<std::string>& getWords() const { return words; }
+  const std::vector<int16_t>& getWordYpos() const { return wordYpos; }
+  bool getIsVertical() const { return isVertical; }
   bool isEmpty() override { return words.empty(); }
   size_t wordCount() const { return words.size(); }
   // given a renderer works out where to break the words into lines

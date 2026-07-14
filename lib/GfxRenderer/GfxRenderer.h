@@ -219,6 +219,8 @@ class GfxRenderer {
   // Helper for drawing rotated text (90 degrees clockwise, for side buttons)
   void drawTextRotated90CW(int fontId, int x, int y, const char* text, bool black = true,
                            EpdFontFamily::Style style = EpdFontFamily::REGULAR) const;
+  void drawTextVertical(int fontId, int x, int y, const char* text, bool black = true,
+                        EpdFontFamily::Style style = EpdFontFamily::REGULAR) const;
   int getTextHeight(int fontId) const;
 
   // Grayscale functions

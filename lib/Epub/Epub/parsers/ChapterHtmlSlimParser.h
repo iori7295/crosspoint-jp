@@ -40,6 +40,7 @@ class ChapterHtmlSlimParser {
   std::unique_ptr<ParsedText> currentTextBlock = nullptr;
   std::unique_ptr<Page> currentPage = nullptr;
   int16_t currentPageNextY = 0;
+  int16_t currentPageNextX = 0;
   int fontId;
   float lineCompression;
   bool extraParagraphSpacing;
@@ -51,6 +52,7 @@ class ChapterHtmlSlimParser {
   const CssParser* cssParser;
   bool embeddedStyle;
   uint8_t imageRendering;
+  bool verticalMode = false;
   std::string contentBase;
   std::string imageBasePath;
   int imageCounter = 0;
@@ -119,27 +121,29 @@ class ChapterHtmlSlimParser {
                                  const bool embeddedStyle, const std::string& contentBase,
                                  const std::string& imageBasePath, const uint8_t imageRendering = 0,
                                  std::vector<std::string> tocAnchors = {},
-                                 const std::function<void()>& popupFn = nullptr, const CssParser* cssParser = nullptr)
+                                 const std::function<void()>& popupFn = nullptr, const CssParser* cssParser = nullptr,
+                                 bool verticalMode = false)
 
-      : epub(epub),
-        filepath(filepath),
-        renderer(renderer),
-        fontId(fontId),
-        lineCompression(lineCompression),
-        extraParagraphSpacing(extraParagraphSpacing),
-        paragraphAlignment(paragraphAlignment),
-        viewportWidth(viewportWidth),
-        viewportHeight(viewportHeight),
-        hyphenationEnabled(hyphenationEnabled),
-        focusReadingEnabled(focusReadingEnabled),
-        completePageFn(completePageFn),
-        popupFn(popupFn),
-        cssParser(cssParser),
-        embeddedStyle(embeddedStyle),
-        imageRendering(imageRendering),
-        contentBase(contentBase),
-        imageBasePath(imageBasePath),
-        tocAnchors(std::move(tocAnchors)) {}
+        : epub(epub),
+          filepath(filepath),
+          renderer(renderer),
+          fontId(fontId),
+          lineCompression(lineCompression),
+          extraParagraphSpacing(extraParagraphSpacing),
+          paragraphAlignment(paragraphAlignment),
+          viewportWidth(viewportWidth),
+          viewportHeight(viewportHeight),
+          hyphenationEnabled(hyphenationEnabled),
+          focusReadingEnabled(focusReadingEnabled),
+          completePageFn(completePageFn),
+          popupFn(popupFn),
+          cssParser(cssParser),
+          embeddedStyle(embeddedStyle),
+          imageRendering(imageRendering),
+          contentBase(contentBase),
+          imageBasePath(imageBasePath),
+          tocAnchors(std::move(tocAnchors)),
+          verticalMode(verticalMode) {}
 
   ~ChapterHtmlSlimParser() = default;
   bool parseAndBuildPages();

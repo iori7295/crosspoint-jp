@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 
+#include "../../GfxRenderer/VerticalTextUtils.h"
 #include "blocks/BlockStyle.h"
 #include "blocks/TextBlock.h"
 
@@ -31,6 +32,7 @@ class ParsedText {
   std::vector<bool> reorderedNoSpaceBeforeScratch;
   std::vector<bool> reorderedFocusSuffixScratch;
   std::vector<uint16_t> visualOrderScratch;
+  std::vector<VerticalTextUtils::VerticalBehavior> wordVerticalBehaviors;
 
   int resolveFirstLineIndent(bool isFirstLine, const GfxRenderer& renderer, int fontId) const;
   std::vector<size_t> computeLineBreaks(const GfxRenderer& renderer, int fontId, int pageWidth,
@@ -60,6 +62,10 @@ class ParsedText {
   ~ParsedText() = default;
 
   void addWord(std::string word, EpdFontFamily::Style fontStyle, bool underline = false, bool attachToPrevious = false);
+  void addWord(std::string word, EpdFontFamily::Style fontStyle, VerticalTextUtils::VerticalBehavior vBehavior,
+               bool underline = false, bool attachToPrevious = false);
+  void layoutVerticalColumns(const GfxRenderer& renderer, int fontId, uint16_t columnHeight, uint16_t columnWidth,
+                             const std::function<void(std::shared_ptr<TextBlock>)>& processColumn);
   void setBlockStyle(const BlockStyle& blockStyle) { this->blockStyle = blockStyle; }
   BlockStyle& getBlockStyle() { return blockStyle; }
   size_t size() const { return words.size(); }

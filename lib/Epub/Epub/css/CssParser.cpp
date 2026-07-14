@@ -407,6 +407,13 @@ void CssParser::parseDeclarationIntoStyle(std::string_view decl, CssStyle& style
       style.verticalAlign = CssVerticalAlign::Sub;
       style.defined.verticalAlign = 1;
     }
+  } else if (iequalsAscii(name, "writing-mode") || iequalsAscii(name, "-epub-writing-mode") ||
+             iequalsAscii(name, "-webkit-writing-mode")) {
+    const std::string_view wmValue = stripTrailingImportant(value);
+    if (iequalsAscii(wmValue, "vertical-rl")) {
+      style.writingMode = CssWritingMode::VerticalRl;
+      style.defined.writingMode = 1;
+    }
   }
 }
 

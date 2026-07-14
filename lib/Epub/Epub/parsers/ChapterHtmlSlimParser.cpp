@@ -185,7 +185,22 @@ void ChapterHtmlSlimParser::flushPartWordBuffer() {
 
   // flush the buffer
   partWordBuffer[partWordBufferIndex] = '\0';
-  currentTextBlock->addWord(partWordBuffer, fontStyle, false, nextWordContinues);
+
+  if (verticalMode) {
+    bool allDigits = true;
+    int charCount = 0;
+    for (int i = 0; i < partWordBufferIndex; i++) {
+      if ((partWordBuffer[i] & 0xC0) != 0x80) charCount++;
+      if (partWordBuffer[i] < '0' || partWordBuffer[i] > '9') allDigits = false;
+    }
+    auto vb = VerticalTextUtils::VerticalBehavior::Sideways;
+    if (allDigits && charCount <= 2) {
+      vb = VerticalTextUtils::VerticalBehavior::TateChuYoko;
+    }
+    currentTextBlock->addWord(partWordBuffer, fontStyle, vb, false, nextWordContinues);
+  } else {
+    currentTextBlock->addWord(partWordBuffer, fontStyle, false, nextWordContinues);
+  }
   partWordBufferIndex = 0;
   nextWordContinues = false;
 }
@@ -1114,13 +1129,21 @@ void XMLCALL ChapterHtmlSlimParser::characterData(void* userData, const XML_Char
   // Spotted when reading Intermezzo, there are some really long text blocks in there.
   if (self->currentTextBlock->size() > 750) {
     LOG_DBG("EHP", "Text block too long, splitting into multiple pages");
-    const int horizontalInset = self->currentTextBlock->getBlockStyle().totalHorizontalInset();
-    const uint16_t effectiveWidth = (horizontalInset < self->viewportWidth)
-                                        ? static_cast<uint16_t>(self->viewportWidth - horizontalInset)
-                                        : self->viewportWidth;
-    self->currentTextBlock->layoutAndExtractLines(
-        self->renderer, self->fontId, effectiveWidth,
-        [self](const std::shared_ptr<TextBlock>& textBlock) { self->addLineToPage(textBlock); }, false);
+    if (self->verticalMode) {
+      const uint16_t effectiveHeight = self->viewportHeight;
+      const uint16_t columnWidth = self->renderer.getLineHeight(self->fontId);
+      self->currentTextBlock->layoutVerticalColumns(
+          self->renderer, self->fontId, effectiveHeight, columnWidth,
+          [self](const std::shared_ptr<TextBlock>& textBlock) { self->addLineToPage(textBlock); });
+    } else {
+      const int horizontalInset = self->currentTextBlock->getBlockStyle().totalHorizontalInset();
+      const uint16_t effectiveWidth = (horizontalInset < self->viewportWidth)
+                                          ? static_cast<uint16_t>(self->viewportWidth - horizontalInset)
+                                          : self->viewportWidth;
+      self->currentTextBlock->layoutAndExtractLines(
+          self->renderer, self->fontId, effectiveWidth,
+          [self](const std::shared_ptr<TextBlock>& textBlock) { self->addLineToPage(textBlock); }, false);
+    }
   }
 }
 
@@ -1358,6 +1381,28 @@ bool ChapterHtmlSlimParser::parseAndBuildPages() {
 }
 
 void ChapterHtmlSlimParser::addLineToPage(std::shared_ptr<TextBlock> line) {
+  if (verticalMode) {
+    const int columnWidth = renderer.getLineHeight(fontId);
+    const int columnSpacing = columnWidth / 4;
+
+    if (!currentPage) {
+      currentPage.reset(new Page());
+      currentPageNextX = viewportWidth - columnWidth;
+    }
+
+    if (currentPageNextX < 0) {
+      completePageFn(std::move(currentPage), xpathParagraphIndex, xpathListItemIndex);
+      completedPageCount++;
+      currentPage.reset(new Page());
+      currentPageNextX = viewportWidth - columnWidth;
+    }
+
+    auto pageLine = std::make_shared<PageLine>(line, currentPageNextX, 0);
+    currentPage->elements.push_back(std::move(pageLine));
+    currentPageNextX -= (columnWidth + columnSpacing);
+    return;
+  }
+
   const int lineHeight = renderer.getLineHeight(fontId) * lineCompression;
 
   if (!currentPage) {
@@ -1381,7 +1426,6 @@ void ChapterHtmlSlimParser::addLineToPage(std::shared_ptr<TextBlock> line) {
   }
   pendingFootnotes.erase(pendingFootnotes.begin(), footnoteIt);
 
-  // Apply horizontal left inset (margin + padding) as x position offset
   const int16_t xOffset = line->getBlockStyle().leftInset();
   currentPage->elements.push_back(std::make_shared<PageLine>(line, xOffset, currentPageNextY));
   currentPageNextY += lineHeight;
@@ -1409,14 +1453,20 @@ void ChapterHtmlSlimParser::makePages() {
     currentPageNextY += blockStyle.paddingTop;
   }
 
-  // Calculate effective width accounting for horizontal margins/padding
-  const int horizontalInset = blockStyle.totalHorizontalInset();
-  const uint16_t effectiveWidth =
-      (horizontalInset < viewportWidth) ? static_cast<uint16_t>(viewportWidth - horizontalInset) : viewportWidth;
+  if (verticalMode) {
+    const uint16_t columnWidth = renderer.getLineHeight(fontId);
+    currentTextBlock->layoutVerticalColumns(
+        renderer, fontId, viewportHeight, columnWidth,
+        [this](const std::shared_ptr<TextBlock>& textBlock) { addLineToPage(textBlock); });
+  } else {
+    const int horizontalInset = blockStyle.totalHorizontalInset();
+    const uint16_t effectiveWidth =
+        (horizontalInset < viewportWidth) ? static_cast<uint16_t>(viewportWidth - horizontalInset) : viewportWidth;
 
-  currentTextBlock->layoutAndExtractLines(
-      renderer, fontId, effectiveWidth,
-      [this](const std::shared_ptr<TextBlock>& textBlock) { addLineToPage(textBlock); });
+    currentTextBlock->layoutAndExtractLines(
+        renderer, fontId, effectiveWidth,
+        [this](const std::shared_ptr<TextBlock>& textBlock) { addLineToPage(textBlock); });
+  }
 
   // Fallback: transfer any remaining pending footnotes to current page.
   // Normally addLineToPage handles this via word-index tracking, but this catches

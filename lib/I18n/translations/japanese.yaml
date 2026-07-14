@@ -1,0 +1,8 @@
+_language_name: "日本語"
+_language_code: "JA"
+_order: "26"
+
+STR_WRITING_MODE: "組方向"
+STR_WM_AUTO: "自動"
+STR_WM_HORIZONTAL: "横書き"
+STR_WM_VERTICAL: "縦書き"

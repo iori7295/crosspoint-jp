@@ -447,6 +447,16 @@ void ParsedText::addWord(std::string word, const EpdFontFamily::Style fontStyle,
   }
 }
 
+void ParsedText::addWord(std::string word, const EpdFontFamily::Style fontStyle,
+                         const VerticalTextUtils::VerticalBehavior vBehavior, const bool underline,
+                         const bool attachToPrevious) {
+  addWord(std::move(word), fontStyle, underline, attachToPrevious);
+  if (wordVerticalBehaviors.capacity() == 0) {
+    wordVerticalBehaviors.reserve(800);
+  }
+  wordVerticalBehaviors.push_back(vBehavior);
+}
+
 int ParsedText::resolveFirstLineIndent(const bool isFirstLine, const GfxRenderer& renderer, const int fontId) const {
   if (!isFirstLine || !isNaturalAlign) {
     return 0;
@@ -531,6 +541,92 @@ void ParsedText::layoutAndExtractLines(const GfxRenderer& renderer, const int fo
     wordNoSpaceBefore.erase(wordNoSpaceBefore.begin(), wordNoSpaceBefore.begin() + consumed);
     wordIsFocusSuffix.erase(wordIsFocusSuffix.begin(), wordIsFocusSuffix.begin() + consumed);
   }
+}
+
+void ParsedText::layoutVerticalColumns(
+    const GfxRenderer& renderer, const int fontId, const uint16_t columnHeight, const uint16_t columnWidth,
+    const std::function<void(std::shared_ptr<TextBlock>)>& processColumn) {
+  if (words.empty()) return;
+
+  if (renderer.isSdCardFont(fontId)) {
+    std::string allText;
+    for (const auto& w : words) { allText += w; allText += ' '; }
+    renderer.ensureSdCardFontReady(fontId, allText.c_str());
+  }
+
+  const int lineHeight = renderer.getLineHeight(fontId);
+
+  std::vector<uint16_t> wordHeights;
+  wordHeights.reserve(words.size());
+  for (size_t i = 0; i < words.size(); i++) {
+    auto vb = (i < wordVerticalBehaviors.size()) ? wordVerticalBehaviors[i]
+                                                  : VerticalTextUtils::VerticalBehavior::Upright;
+    switch (vb) {
+      case VerticalTextUtils::VerticalBehavior::Sideways:
+        wordHeights.push_back(renderer.getTextWidth(fontId, words[i].c_str(), wordStyles[i]));
+        break;
+      case VerticalTextUtils::VerticalBehavior::TateChuYoko:
+        wordHeights.push_back(lineHeight);
+        break;
+      default:
+        wordHeights.push_back(renderer.getTextWidth(fontId, words[i].c_str(), wordStyles[i]));
+        break;
+    }
+  }
+
+  size_t columnStart = 0;
+  int currentY = 0;
+
+  for (size_t i = 0; i < words.size(); i++) {
+    if (currentY + wordHeights[i] > columnHeight && i > columnStart) {
+      std::vector<std::string> colWords(words.begin() + columnStart, words.begin() + i);
+      std::vector<int16_t> colYpos;
+      std::vector<int16_t> colXpos;
+      std::vector<EpdFontFamily::Style> colStyles(wordStyles.begin() + columnStart, wordStyles.begin() + i);
+      colYpos.reserve(colWords.size());
+      colXpos.resize(colWords.size(), 0);
+
+      int y = 0;
+      for (size_t j = columnStart; j < i; j++) {
+        colYpos.push_back(static_cast<int16_t>(y));
+        y += wordHeights[j];
+      }
+
+      processColumn(std::make_shared<TextBlock>(std::move(colWords), std::move(colXpos), std::move(colStyles),
+                                                std::vector<uint8_t>{}, std::vector<uint16_t>{}, blockStyle,
+                                                std::move(colYpos), true));
+
+      columnStart = i;
+      currentY = 0;
+    }
+    currentY += wordHeights[i];
+  }
+
+  if (columnStart < words.size()) {
+    std::vector<std::string> colWords(words.begin() + columnStart, words.end());
+    std::vector<int16_t> colYpos;
+    std::vector<int16_t> colXpos;
+    std::vector<EpdFontFamily::Style> colStyles(wordStyles.begin() + columnStart, wordStyles.end());
+    colYpos.reserve(colWords.size());
+    colXpos.resize(colWords.size(), 0);
+
+    int y = 0;
+    for (size_t j = columnStart; j < words.size(); j++) {
+      colYpos.push_back(static_cast<int16_t>(y));
+      y += wordHeights[j];
+    }
+
+    processColumn(std::make_shared<TextBlock>(std::move(colWords), std::move(colXpos), std::move(colStyles),
+                                              std::vector<uint8_t>{}, std::vector<uint16_t>{}, blockStyle,
+                                              std::move(colYpos), true));
+  }
+
+  words.clear();
+  wordStyles.clear();
+  wordContinues.clear();
+  wordNoSpaceBefore.clear();
+  wordIsFocusSuffix.clear();
+  wordVerticalBehaviors.clear();
 }
 
 std::vector<uint16_t> ParsedText::calculateWordWidths(const GfxRenderer& renderer, const int fontId) {

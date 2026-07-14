@@ -79,6 +79,7 @@ bool Epub::parseContentOpf(BookMetadataCache::BookMetadata& bookMetadata, const 
   bookMetadata.title = utf8ComposeNfc(opfParser.title);
   bookMetadata.author = opfParser.author;
   bookMetadata.language = opfParser.language;
+  pageProgressionRtl_ = opfParser.pageProgressionRtl;
   bookMetadata.coverItemHref = opfParser.coverItemHref;
 
   // Guide-based cover fallback: if no cover found via metadata/properties,

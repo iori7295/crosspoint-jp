@@ -8,8 +8,15 @@
 #include <cstring>
 
 void TextBlock::render(const GfxRenderer& renderer, const int fontId, const int x, const int y) const {
-  // Focus annotations are optional: empty vectors mean no word in this block has a split.
-  // When present, they must be sized in lockstep with words[].
+  if (isVertical) {
+    for (size_t i = 0; i < words.size(); i++) {
+      const int wordX = wordXpos.empty() ? x : wordXpos[i] + x;
+      const int wordY = (i < wordYpos.size()) ? y + wordYpos[i] : y;
+      renderer.drawTextVertical(fontId, wordX, wordY, words[i].c_str(), true, wordStyles[i]);
+    }
+    return;
+  }
+
   const bool hasFocus = !wordFocusBoundary.empty();
   if (words.size() != wordXpos.size() || words.size() != wordStyles.size() ||
       (hasFocus && (words.size() != wordFocusBoundary.size() || words.size() != wordFocusSuffixX.size()))) {
@@ -28,10 +35,6 @@ void TextBlock::render(const GfxRenderer& renderer, const int fontId, const int 
         BidiUtils::detectParagraphLevel(words[i].c_str(), blockStyle.isRtl ? 1 : 0));
     const uint8_t boundary = hasFocus ? wordFocusBoundary[i] : 0;
 
-    // SUP/SUB shift the baseline passed to drawText; the glyph is also scaled 50% inside
-    // drawText, so these offsets are chosen relative to the full-size ascender:
-    //   SUP: raise by 40% of ascender — sits clearly above the cap-height
-    //   SUB: lower by 25% of ascender — descends below baseline without clashing with ascenders below
     int wordY = y;
     if ((currentStyle & EpdFontFamily::SUP) != 0) {
       wordY -= ascender * 2 / 5;
@@ -40,10 +43,6 @@ void TextBlock::render(const GfxRenderer& renderer, const int fontId, const int 
     }
 
     if (boundary > 0) {
-      // Focus split: draw bold prefix, then the regular suffix at a pre-computed x offset.
-      // The bold prefix is bounded to 9 codepoints by the clamp on targetBoldChars in
-      // ParsedText::addWord; 9 UTF-8 codepoints occupy at most 9 * 4 = 36 bytes, +1 for null = 37.
-      // suffixX is computed at cache-creation time to avoid font metric lookups at render time.
       static constexpr size_t MAX_FOCUS_PREFIX_BYTES = 9 * 4 + 1;
       char boldBuf[40];
       static_assert(sizeof(boldBuf) >= MAX_FOCUS_PREFIX_BYTES,
@@ -115,6 +114,11 @@ bool TextBlock::serialize(HalFile& file) const {
   serialization::writePod(file, blockStyle.isRtl);
   serialization::writePod(file, blockStyle.directionDefined);
 
+  serialization::writePod(file, isVertical);
+  if (isVertical) {
+    for (auto y : wordYpos) serialization::writePod(file, y);
+  }
+
   return true;
 }
 
@@ -170,7 +174,15 @@ std::unique_ptr<TextBlock> TextBlock::deserialize(HalFile& file) {
   serialization::readPod(file, blockStyle.isRtl);
   serialization::readPod(file, blockStyle.directionDefined);
 
+  bool vertical = false;
+  serialization::readPod(file, vertical);
+  std::vector<int16_t> wordYpos;
+  if (vertical) {
+    wordYpos.resize(wc);
+    for (auto& y : wordYpos) serialization::readPod(file, y);
+  }
+
   return std::unique_ptr<TextBlock>(new TextBlock(std::move(words), std::move(wordXpos), std::move(wordStyles),
                                                   std::move(wordFocusBoundary), std::move(wordFocusSuffixX),
-                                                  blockStyle));
+                                                  blockStyle, std::move(wordYpos), vertical));
 }
