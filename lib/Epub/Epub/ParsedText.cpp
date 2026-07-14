@@ -303,8 +303,7 @@ void ParsedText::addWord(std::string word, const EpdFontFamily::Style fontStyle,
     if (wordStartsRtl) {
       hasRtlWord = true;
     }
-    if (rubyTexts.size() != words.size()) rubyTexts.resize(words.size());
-    return;
+      return;
   }
 
   if (containsCjkBreakableCodepoint(word)) {
@@ -312,7 +311,6 @@ void ParsedText::addWord(std::string word, const EpdFontFamily::Style fontStyle,
     if (wordStartsRtl) {
       hasRtlWord = true;
     }
-    if (rubyTexts.size() != words.size()) rubyTexts.resize(words.size());
     return;
   }
 
@@ -321,7 +319,6 @@ void ParsedText::addWord(std::string word, const EpdFontFamily::Style fontStyle,
     if (wordStartsRtl) {
       hasRtlWord = true;
     }
-    if (rubyTexts.size() != words.size()) rubyTexts.resize(words.size());
     return;
   }
 
@@ -356,7 +353,6 @@ void ParsedText::addWord(std::string word, const EpdFontFamily::Style fontStyle,
   auto processSegment = [&](std::string_view segment, bool isWord, bool attach, bool noSpaceBefore) {
     if (!isWord) {
       words.emplace_back(segment);
-      rubyTexts.emplace_back("");
       wordStyles.push_back(baseStyle);
       wordContinues.push_back(attach);
       wordNoSpaceBefore.push_back(noSpaceBefore);
@@ -377,7 +373,6 @@ void ParsedText::addWord(std::string word, const EpdFontFamily::Style fontStyle,
 
       if (targetBoldChars >= charCount) {
         words.emplace_back(segment);
-        rubyTexts.emplace_back("");
         wordStyles.push_back(static_cast<EpdFontFamily::Style>(baseStyle | EpdFontFamily::BOLD));
         wordContinues.push_back(attach);
         wordNoSpaceBefore.push_back(noSpaceBefore);
@@ -390,14 +385,12 @@ void ParsedText::addWord(std::string word, const EpdFontFamily::Style fontStyle,
         size_t splitByteOffset = countPtr - reinterpret_cast<const unsigned char*>(segment.data());
 
         words.emplace_back(segment.substr(0, splitByteOffset));
-        rubyTexts.emplace_back("");
         wordStyles.push_back(static_cast<EpdFontFamily::Style>(baseStyle | EpdFontFamily::BOLD));
         wordContinues.push_back(attach);
         wordNoSpaceBefore.push_back(noSpaceBefore);
         wordIsFocusSuffix.push_back(false);
 
         words.emplace_back(segment.substr(splitByteOffset));
-        rubyTexts.emplace_back("");
         wordStyles.push_back(baseStyle);
         wordContinues.push_back(true);
         wordNoSpaceBefore.push_back(false);
@@ -446,18 +439,12 @@ void ParsedText::addWord(std::string word, const EpdFontFamily::Style fontStyle,
   if (wordStartsRtl) {
     hasRtlWord = true;
   }
-  if (rubyTexts.size() != words.size()) {
-    rubyTexts.resize(words.size());
-  }
 }
 
 void ParsedText::addWord(std::string word, const EpdFontFamily::Style fontStyle,
                          const VerticalTextUtils::VerticalBehavior vBehavior, const bool underline,
                          const bool attachToPrevious) {
   addWord(std::move(word), fontStyle, underline, attachToPrevious);
-  if (rubyTexts.size() != words.size()) {
-    rubyTexts.resize(words.size());
-  }
   if (wordVerticalBehaviors.capacity() == 0) {
     wordVerticalBehaviors.reserve(800);
   }
@@ -465,12 +452,18 @@ void ParsedText::addWord(std::string word, const EpdFontFamily::Style fontStyle,
 }
 
 void ParsedText::setRubyForLastWord(const std::string& ruby) {
-  if (!rubyTexts.empty() && rubyTexts.size() == words.size()) {
+  if (rubyTexts.size() != words.size()) {
+    rubyTexts.assign(words.size(), std::string());
+  }
+  if (!rubyTexts.empty()) {
     rubyTexts.back() = ruby;
   }
 }
 
 void ParsedText::setRubyForWordAt(size_t index, const std::string& ruby) {
+  if (rubyTexts.size() != words.size()) {
+    rubyTexts.assign(words.size(), std::string());
+  }
   if (index < rubyTexts.size()) {
     rubyTexts[index] = ruby;
   }
