@@ -913,6 +913,13 @@ bool ParsedText::hyphenateWordAtIndex(const size_t wordIndex, const int availabl
   wordStyles.insert(wordStyles.begin() + wordIndex + 1, style);
   // The hyphen remainder is not a focus suffix - it starts fresh on the next line.
   wordIsFocusSuffix.insert(wordIsFocusSuffix.begin() + wordIndex + 1, false);
+  if (!rubyTexts.empty()) {
+    rubyTexts.insert(rubyTexts.begin() + wordIndex + 1, rubyTexts[wordIndex]);
+  }
+  if (!wordVerticalBehaviors.empty()) {
+    wordVerticalBehaviors.insert(wordVerticalBehaviors.begin() + wordIndex + 1,
+                                  VerticalTextUtils::VerticalBehavior::Upright);
+  }
 
   // Continuation flag handling after splitting a word into prefix + remainder.
   //
