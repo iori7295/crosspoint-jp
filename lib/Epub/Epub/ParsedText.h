@@ -33,6 +33,7 @@ class ParsedText {
   std::vector<bool> reorderedFocusSuffixScratch;
   std::vector<uint16_t> visualOrderScratch;
   std::vector<VerticalTextUtils::VerticalBehavior> wordVerticalBehaviors;
+  std::vector<std::string> rubyTexts;
 
   int resolveFirstLineIndent(bool isFirstLine, const GfxRenderer& renderer, int fontId) const;
   std::vector<size_t> computeLineBreaks(const GfxRenderer& renderer, int fontId, int pageWidth,
@@ -66,6 +67,8 @@ class ParsedText {
                bool underline = false, bool attachToPrevious = false);
   void layoutVerticalColumns(const GfxRenderer& renderer, int fontId, uint16_t columnHeight, uint16_t columnWidth,
                              const std::function<void(std::shared_ptr<TextBlock>)>& processColumn);
+  void setRubyForLastWord(const std::string& ruby);
+  void setRubyForWordAt(size_t index, const std::string& ruby);
   void setBlockStyle(const BlockStyle& blockStyle) { this->blockStyle = blockStyle; }
   BlockStyle& getBlockStyle() { return blockStyle; }
   size_t size() const { return words.size(); }

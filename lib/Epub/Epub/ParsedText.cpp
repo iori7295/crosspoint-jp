@@ -303,6 +303,7 @@ void ParsedText::addWord(std::string word, const EpdFontFamily::Style fontStyle,
     if (wordStartsRtl) {
       hasRtlWord = true;
     }
+    if (rubyTexts.size() != words.size()) rubyTexts.resize(words.size(), "");
     return;
   }
 
@@ -311,15 +312,16 @@ void ParsedText::addWord(std::string word, const EpdFontFamily::Style fontStyle,
     if (wordStartsRtl) {
       hasRtlWord = true;
     }
+    if (rubyTexts.size() != words.size()) rubyTexts.resize(words.size(), "");
     return;
   }
 
-  // Already-bold text should stay fully bold; focus splitting would make its suffix regular later.
   if (!this->focusReadingEnabled || (baseStyle & EpdFontFamily::BOLD) != 0) {
     pushToken(std::move(word), effectiveAttachToPrevious, effectiveNoSpaceBefore, false);
     if (wordStartsRtl) {
       hasRtlWord = true;
     }
+    if (rubyTexts.size() != words.size()) rubyTexts.resize(words.size(), "");
     return;
   }
 
@@ -353,8 +355,8 @@ void ParsedText::addWord(std::string word, const EpdFontFamily::Style fontStyle,
   // Use std::string_view to avoid heap allocations when slicing
   auto processSegment = [&](std::string_view segment, bool isWord, bool attach, bool noSpaceBefore) {
     if (!isWord) {
-      // Punctuation and Numbers stay regular
       words.emplace_back(segment);
+      rubyTexts.emplace_back("");
       wordStyles.push_back(baseStyle);
       wordContinues.push_back(attach);
       wordNoSpaceBefore.push_back(noSpaceBefore);
@@ -369,14 +371,13 @@ void ParsedText::addWord(std::string word, const EpdFontFamily::Style fontStyle,
         charCount++;
       }
 
-      // Target 45% for 1-bold at 4 chars and 3-bold at 7 chars with floor truncation
       constexpr size_t FOCUS_READING_PERCENT = 45;
       size_t targetBoldChars = (charCount * FOCUS_READING_PERCENT) / 100;
       targetBoldChars = std::clamp<size_t>(targetBoldChars, 1, 9);
 
       if (targetBoldChars >= charCount) {
-        // Whole segment is bold - no suffix split needed
         words.emplace_back(segment);
+        rubyTexts.emplace_back("");
         wordStyles.push_back(static_cast<EpdFontFamily::Style>(baseStyle | EpdFontFamily::BOLD));
         wordContinues.push_back(attach);
         wordNoSpaceBefore.push_back(noSpaceBefore);
@@ -388,15 +389,15 @@ void ParsedText::addWord(std::string word, const EpdFontFamily::Style fontStyle,
         }
         size_t splitByteOffset = countPtr - reinterpret_cast<const unsigned char*>(segment.data());
 
-        // Bold prefix
         words.emplace_back(segment.substr(0, splitByteOffset));
+        rubyTexts.emplace_back("");
         wordStyles.push_back(static_cast<EpdFontFamily::Style>(baseStyle | EpdFontFamily::BOLD));
         wordContinues.push_back(attach);
         wordNoSpaceBefore.push_back(noSpaceBefore);
         wordIsFocusSuffix.push_back(false);
 
-        // Regular suffix - marked so extractLine can merge it back into single TextBlock entry
         words.emplace_back(segment.substr(splitByteOffset));
+        rubyTexts.emplace_back("");
         wordStyles.push_back(baseStyle);
         wordContinues.push_back(true);
         wordNoSpaceBefore.push_back(false);
@@ -445,16 +446,34 @@ void ParsedText::addWord(std::string word, const EpdFontFamily::Style fontStyle,
   if (wordStartsRtl) {
     hasRtlWord = true;
   }
+  if (rubyTexts.size() != words.size()) {
+    rubyTexts.resize(words.size(), "");
+  }
 }
 
 void ParsedText::addWord(std::string word, const EpdFontFamily::Style fontStyle,
                          const VerticalTextUtils::VerticalBehavior vBehavior, const bool underline,
                          const bool attachToPrevious) {
   addWord(std::move(word), fontStyle, underline, attachToPrevious);
+  if (rubyTexts.size() != words.size()) {
+    rubyTexts.resize(words.size(), "");
+  }
   if (wordVerticalBehaviors.capacity() == 0) {
     wordVerticalBehaviors.reserve(800);
   }
   wordVerticalBehaviors.push_back(vBehavior);
+}
+
+void ParsedText::setRubyForLastWord(const std::string& ruby) {
+  if (!rubyTexts.empty()) {
+    rubyTexts.back() = ruby;
+  }
+}
+
+void ParsedText::setRubyForWordAt(size_t index, const std::string& ruby) {
+  if (index < rubyTexts.size()) {
+    rubyTexts[index] = ruby;
+  }
 }
 
 int ParsedText::resolveFirstLineIndent(const bool isFirstLine, const GfxRenderer& renderer, const int fontId) const {
