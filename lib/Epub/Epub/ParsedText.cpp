@@ -303,7 +303,7 @@ void ParsedText::addWord(std::string word, const EpdFontFamily::Style fontStyle,
     if (wordStartsRtl) {
       hasRtlWord = true;
     }
-    if (rubyTexts.size() != words.size()) rubyTexts.resize(words.size(), "");
+    if (rubyTexts.size() != words.size()) rubyTexts.resize(words.size());
     return;
   }
 
@@ -312,7 +312,7 @@ void ParsedText::addWord(std::string word, const EpdFontFamily::Style fontStyle,
     if (wordStartsRtl) {
       hasRtlWord = true;
     }
-    if (rubyTexts.size() != words.size()) rubyTexts.resize(words.size(), "");
+    if (rubyTexts.size() != words.size()) rubyTexts.resize(words.size());
     return;
   }
 
@@ -321,7 +321,7 @@ void ParsedText::addWord(std::string word, const EpdFontFamily::Style fontStyle,
     if (wordStartsRtl) {
       hasRtlWord = true;
     }
-    if (rubyTexts.size() != words.size()) rubyTexts.resize(words.size(), "");
+    if (rubyTexts.size() != words.size()) rubyTexts.resize(words.size());
     return;
   }
 
@@ -447,7 +447,7 @@ void ParsedText::addWord(std::string word, const EpdFontFamily::Style fontStyle,
     hasRtlWord = true;
   }
   if (rubyTexts.size() != words.size()) {
-    rubyTexts.resize(words.size(), "");
+    rubyTexts.resize(words.size());
   }
 }
 
@@ -456,7 +456,7 @@ void ParsedText::addWord(std::string word, const EpdFontFamily::Style fontStyle,
                          const bool attachToPrevious) {
   addWord(std::move(word), fontStyle, underline, attachToPrevious);
   if (rubyTexts.size() != words.size()) {
-    rubyTexts.resize(words.size(), "");
+    rubyTexts.resize(words.size());
   }
   if (wordVerticalBehaviors.capacity() == 0) {
     wordVerticalBehaviors.reserve(800);
@@ -465,7 +465,7 @@ void ParsedText::addWord(std::string word, const EpdFontFamily::Style fontStyle,
 }
 
 void ParsedText::setRubyForLastWord(const std::string& ruby) {
-  if (!rubyTexts.empty()) {
+  if (!rubyTexts.empty() && rubyTexts.size() == words.size()) {
     rubyTexts.back() = ruby;
   }
 }
@@ -559,7 +559,7 @@ void ParsedText::layoutAndExtractLines(const GfxRenderer& renderer, const int fo
     wordContinues.erase(wordContinues.begin(), wordContinues.begin() + consumed);
     wordNoSpaceBefore.erase(wordNoSpaceBefore.begin(), wordNoSpaceBefore.begin() + consumed);
     wordIsFocusSuffix.erase(wordIsFocusSuffix.begin(), wordIsFocusSuffix.begin() + consumed);
-    if (!rubyTexts.empty()) {
+    if (!rubyTexts.empty() && rubyTexts.size() == words.size()) {
       const size_t rtConsumed = std::min(consumed, static_cast<size_t>(rubyTexts.size()));
       rubyTexts.erase(rubyTexts.begin(), rubyTexts.begin() + rtConsumed);
     }
@@ -615,7 +615,7 @@ void ParsedText::layoutVerticalColumns(
         y += wordHeights[j];
       }
 
-      std::vector<std::string> colRubyTexts(rubyTexts.begin() + columnStart, rubyTexts.begin() + i);
+      std::vector<std::string> colRubyTexts; if (rubyTexts.size() >= i) colRubyTexts.assign(rubyTexts.begin() + columnStart, rubyTexts.begin() + i);
       processColumn(std::make_shared<TextBlock>(std::move(colWords), std::move(colXpos), std::move(colStyles),
                                                 std::vector<uint8_t>{}, std::vector<uint16_t>{}, blockStyle,
                                                 std::move(colYpos), true, std::move(colRubyTexts)));
@@ -640,7 +640,7 @@ void ParsedText::layoutVerticalColumns(
       y += wordHeights[j];
     }
 
-    std::vector<std::string> colRubyTexts(rubyTexts.begin() + columnStart, rubyTexts.end());
+    std::vector<std::string> colRubyTexts; if (!rubyTexts.empty() && rubyTexts.size() >= columnStart) colRubyTexts.assign(rubyTexts.begin() + columnStart, rubyTexts.end());
     processColumn(std::make_shared<TextBlock>(std::move(colWords), std::move(colXpos), std::move(colStyles),
                                               std::vector<uint8_t>{}, std::vector<uint16_t>{}, blockStyle,
                                               std::move(colYpos), true, std::move(colRubyTexts)));
@@ -1255,7 +1255,7 @@ void ParsedText::extractLine(const size_t breakIndex, const int pageWidth, const
   }
 
   if (!lineHasFocusSplit) {
-    std::vector<std::string> lineRubyTexts(rubyTexts.begin() + lastBreakAt, rubyTexts.begin() + lineBreak);
+    std::vector<std::string> lineRubyTexts; if (rubyTexts.size() >= lineBreak) lineRubyTexts.assign(rubyTexts.begin() + lastBreakAt, rubyTexts.begin() + lineBreak);
     processLine(std::make_shared<TextBlock>(std::move(lineWords), std::move(lineXPos), std::move(lineWordStyles),
                                             std::vector<uint8_t>{}, std::vector<uint16_t>{}, blockStyle,
                                             std::vector<int16_t>{}, false, std::move(lineRubyTexts)));
@@ -1303,7 +1303,7 @@ void ParsedText::extractLine(const size_t breakIndex, const int pageWidth, const
     }
   }
 
-  std::vector<std::string> lineRubyTexts(rubyTexts.begin() + lastBreakAt, rubyTexts.begin() + lineBreak);
+  std::vector<std::string> lineRubyTexts; if (rubyTexts.size() >= lineBreak) lineRubyTexts.assign(rubyTexts.begin() + lastBreakAt, rubyTexts.begin() + lineBreak);
   processLine(std::make_shared<TextBlock>(std::move(outWords), std::move(outXPos), std::move(outStyles),
                                           std::move(outBoundaries), std::move(outSuffixX), blockStyle,
                                           std::vector<int16_t>{}, false, std::move(lineRubyTexts)));
