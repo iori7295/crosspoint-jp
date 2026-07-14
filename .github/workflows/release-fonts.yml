@@ -5,6 +5,9 @@ name: Build & Publish SD Card Fonts
 # GitHub Release assets on the crosspoint-fonts repo so font releases don't
 # clutter the firmware releases page.
 #
+permissions:
+  contents: write
+
 on:
   workflow_dispatch:
 
