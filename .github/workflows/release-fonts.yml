@@ -41,12 +41,19 @@ jobs:
           echo "metadata=$(python3 -c 'from cpfont_version import FONTS_MANIFEST_VERSION; print(FONTS_MANIFEST_VERSION)')" >> "$GITHUB_OUTPUT"
 
       - name: Build SD card fonts
-        run: python3 lib/EpdFont/scripts/build-sd-fonts.py --clean --verbose -j 1
+        run: python3 lib/EpdFont/scripts/build-sd-fonts.py --clean --verbose -j 2 --timeout 3600
 
       - name: Flatten output for release assets
         run: |
           mkdir -p dist
           find lib/EpdFont/scripts/output -name '*.cpfont' -exec cp {} dist/ \;
+
+      - name: Verify Japanese fonts exist
+        run: |
+          for f in BIZUDGothic NotoSansJp NotoSerifJp BIZUDMincho; do
+            ls dist/${f}_16.cpfont 2>/dev/null || { echo "MISSING: $f"; exit 1; }
+            echo "OK: $f"
+          done
 
       - name: Compute release tags
         id: tags
