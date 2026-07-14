@@ -1,0 +1,87 @@
+name: Deploy Flasher
+
+on:
+  workflow_run:
+    workflows: ["Dev Build"]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: deploy-flasher
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Download assets and generate manifests
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          REPO="${{ github.repository }}"
+          mkdir -p _site/dev _site/stable
+
+          DEV_TAG=$(gh api "repos/${REPO}/releases" --jq '[.[] | select(.prerelease == true and (.tag_name | startswith("dev-")))] | first | .tag_name // empty')
+          if [ -n "${DEV_TAG}" ]; then
+            gh release download "${DEV_TAG}" --repo "${REPO}" --pattern "bootloader.bin" --dir _site/dev
+            gh release download "${DEV_TAG}" --repo "${REPO}" --pattern "partitions.bin" --dir _site/dev
+            gh release download "${DEV_TAG}" --repo "${REPO}" --pattern "firmware.bin" --dir _site/dev
+            cat > _site/manifest_dev.json <<MANIFEST
+          {
+            "name": "CrossPoint JP (Dev)",
+            "version": "${DEV_TAG}",
+            "builds": [
+              {
+                "chipFamily": "ESP32-C3",
+                "parts": [
+                  { "path": "dev/bootloader.bin", "offset": 0 },
+                  { "path": "dev/partitions.bin", "offset": 32768 },
+                  { "path": "dev/firmware.bin", "offset": 65536 }
+                ]
+              }
+            ]
+          }
+          MANIFEST
+          fi
+
+          STABLE_TAG=$(gh api "repos/${REPO}/releases" --jq '[.[] | select(.prerelease == false and .draft == false and (.tag_name | startswith("sd-") | not))] | first | .tag_name // empty')
+          if [ -n "${STABLE_TAG}" ]; then
+            gh release download "${STABLE_TAG}" --repo "${REPO}" --pattern "bootloader.bin" --dir _site/stable
+            gh release download "${STABLE_TAG}" --repo "${REPO}" --pattern "partitions.bin" --dir _site/stable
+            gh release download "${STABLE_TAG}" --repo "${REPO}" --pattern "firmware.bin" --dir _site/stable
+            cat > _site/manifest_stable.json <<MANIFEST
+          {
+            "name": "CrossPoint JP (Stable)",
+            "version": "${STABLE_TAG}",
+            "builds": [
+              {
+                "chipFamily": "ESP32-C3",
+                "parts": [
+                  { "path": "stable/bootloader.bin", "offset": 0 },
+                  { "path": "stable/partitions.bin", "offset": 32768 },
+                  { "path": "stable/firmware.bin", "offset": 65536 }
+                ]
+              }
+            ]
+          }
+          MANIFEST
+          else
+            rmdir _site/stable 2>/dev/null || true
+          fi
+
+          cp flasher/index.html _site/index.html
+          find _site -type f | sort
+
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./_site
+          force_orphan: true
