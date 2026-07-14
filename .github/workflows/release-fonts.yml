@@ -5,13 +5,11 @@ name: Build & Publish SD Card Fonts
 # GitHub Release assets on the crosspoint-fonts repo so font releases don't
 # clutter the firmware releases page.
 #
-# Requires a repository secret FONTS_REPO_TOKEN — a fine-grained PAT (or
-# classic PAT) with contents:write permission on the target fonts repo.
 on:
   workflow_dispatch:
 
 env:
-  FONTS_REPO: crosspoint-reader/crosspoint-fonts
+  FONTS_REPO: iori7295/crosspoint-jp
 
 jobs:
   build-fonts:
@@ -50,7 +48,7 @@ jobs:
       - name: Compute release tags
         id: tags
         env:
-          GH_TOKEN: ${{ secrets.FONTS_REPO_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           BASE="sd-fonts-m${{ steps.versions.outputs.metadata }}-b${{ steps.versions.outputs.binary }}"
           echo "base=$BASE" >> "$GITHUB_OUTPUT"
@@ -67,13 +65,13 @@ jobs:
         run: |
           python3 scripts/generate-font-manifest.py \
             --input dist \
-            --base-url "https://github.com/${{ env.FONTS_REPO }}/releases/download/${{ steps.tags.outputs.base }}/" \
+            --base-url "https://github.com/${{ github.repository }}/releases/download/${{ steps.tags.outputs.base }}/" \
             --output dist/fonts.json \
             --descriptions-from lib/EpdFont/scripts/sd-fonts.yaml
 
       - name: Publish versioned release to fonts repo
         env:
-          GH_TOKEN: ${{ secrets.FONTS_REPO_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSIONED="${{ steps.tags.outputs.versioned }}"
           TITLE="SD Card Fonts (${VERSIONED#sd-fonts-})"
@@ -89,7 +87,7 @@ jobs:
 
       - name: Update stable tag for device downloads
         env:
-          GH_TOKEN: ${{ secrets.FONTS_REPO_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           BASE="${{ steps.tags.outputs.base }}"
 
