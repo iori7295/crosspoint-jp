@@ -91,7 +91,10 @@ void LanguageSelectActivity::render(RenderLock&&) {
   const auto currentLang = static_cast<uint8_t>(I18N.getLanguage());
   GUI.drawList(
       renderer, Rect{0, contentTop, pageWidth, contentHeight}, totalItems, selectedIndex,
-      [this](int index) { return I18N.getLanguageName(static_cast<Language>(SORTED_LANGUAGE_INDICES[index])); },
+      [this](int index) {
+        const uint8_t langIdx = SORTED_LANGUAGE_INDICES[index];
+        return std::string(LANGUAGE_CODES[langIdx]) + " " + I18N.getLanguageName(static_cast<Language>(langIdx));
+      },
       nullptr, nullptr,
       [this, currentLang](int index) { return SORTED_LANGUAGE_INDICES[index] == currentLang ? tr(STR_SELECTED) : ""; },
       true);
