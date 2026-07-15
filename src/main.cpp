@@ -352,9 +352,6 @@ void setup() {
   HalSystem::checkPanic();
 
   SETTINGS.loadFromFile();
-  // Force Japanese UI regardless of any saved language on the SD card.
-  SETTINGS.language = static_cast<uint8_t>(Language::JAPANESE);
-  SETTINGS.saveToFile();
   APP_STATE.loadFromFile();
   RECENT_BOOKS.loadFromFile();
   I18N.setLanguage(static_cast<Language>(SETTINGS.language));
