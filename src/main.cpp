@@ -99,21 +99,18 @@ EpdFontFamily notosans18FontFamily(&notosans18RegularFont, &notosans18BoldFont, 
 EpdFont smallFont(&notosans_8_regular);
 EpdFontFamily smallFontFamily(&smallFont);
 
-EpdFont ui10RegularFont(&ubuntu_10_regular);
-EpdFont ui10BoldFont(&ubuntu_10_bold);
+// UI fonts: always use NotoSansCJKjp which covers both Latin and CJK
+// characters at matching sizes.  English and Japanese UI text both render
+// correctly from the same font — no runtime swap needed.
+EpdFont ui10RegularFont(&ui_font_jp_10);
+EpdFont ui10BoldFont(&ui_font_jp_10);
 EpdFontFamily ui10FontFamily(&ui10RegularFont, &ui10BoldFont);
 
-EpdFont ui12RegularFont(&ubuntu_12_regular);
-EpdFont ui12BoldFont(&ubuntu_12_bold);
+EpdFont ui12RegularFont(&ui_font_jp_12);
+EpdFont ui12BoldFont(&ui_font_jp_12);
 EpdFontFamily ui12FontFamily(&ui12RegularFont, &ui12BoldFont);
 
-// Japanese UI fonts: built from NotoSansCJKjp at matching sizes.
-// When the UI language is Japanese, these replace the default Ubuntu fonts
-// so that menu text (which uses CJK characters) renders correctly.
-EpdFont uiFontJp10Regular(&ui_font_jp_10);
-EpdFont uiFontJp12Regular(&ui_font_jp_12);
-EpdFontFamily uiFontJp10Family(&uiFontJp10Regular, &uiFontJp10Regular);
-EpdFontFamily uiFontJp12Family(&uiFontJp12Regular, &uiFontJp12Regular);
+// measurement of power button press duration calibration value
 
 // measurement of power button press duration calibration value
 unsigned long t1 = 0;
@@ -302,33 +299,14 @@ void setupDisplayAndFonts(bool seamless = false) {
   renderer.insertFont(NOTOSANS_16_FONT_ID, notosans16FontFamily);
   renderer.insertFont(NOTOSANS_18_FONT_ID, notosans18FontFamily);
 #endif  // OMIT_FONTS
-  // Register UI fonts. When the system language is Japanese (which requires
-  // CJK glyphs not present in the Ubuntu UI fonts), register the Japanese
-  // supplement font instead. The supplement covers both Latin and Japanese
-  // characters, so all UI text renders correctly.
-  if (SETTINGS.language == static_cast<uint8_t>(Language::JAPANESE)) {
-    renderer.insertFont(UI_10_FONT_ID, uiFontJp10Family);
-    renderer.insertFont(UI_12_FONT_ID, uiFontJp12Family);
-  } else {
-    renderer.insertFont(UI_10_FONT_ID, ui10FontFamily);
-    renderer.insertFont(UI_12_FONT_ID, ui12FontFamily);
-  }
+  renderer.insertFont(UI_10_FONT_ID, ui10FontFamily);
+  renderer.insertFont(UI_12_FONT_ID, ui12FontFamily);
   renderer.insertFont(SMALL_FONT_ID, smallFontFamily);
 
   // Discover and load SD card fonts
   sdFontSystem.begin(renderer);
 
   LOG_DBG("MAIN", "Fonts setup");
-}
-
-void updateUiFontsForLanguage() {
-  if (SETTINGS.language == static_cast<uint8_t>(Language::JAPANESE)) {
-    renderer.insertFont(UI_10_FONT_ID, uiFontJp10Family);
-    renderer.insertFont(UI_12_FONT_ID, uiFontJp12Family);
-  } else {
-    renderer.insertFont(UI_10_FONT_ID, ui10FontFamily);
-    renderer.insertFont(UI_12_FONT_ID, ui12FontFamily);
-  }
 }
 
 void setup() {

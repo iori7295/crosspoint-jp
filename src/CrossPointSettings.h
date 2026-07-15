@@ -4,6 +4,8 @@
 #include <cstdint>
 #include <iosfwd>
 
+#include "I18nKeys.h"
+
 class CrossPointSettings {
  private:
   // Private constructor for singleton
@@ -285,7 +287,7 @@ class CrossPointSettings {
   // Tilt-based page turning (X3 only — requires QMI8658 IMU)
   uint8_t tiltPageTurn = TILT_OFF;
   // Language setting (Language enum index, default 0 = EN)
-  uint8_t language = 0;
+  uint8_t language = static_cast<uint8_t>(Language::JAPANESE);
   // Quick Resume: keep current content visible with moon icon instead of showing a static sleep screen.
   uint8_t quickResumeSleepScreen = QUICK_RESUME_NEVER;
 
