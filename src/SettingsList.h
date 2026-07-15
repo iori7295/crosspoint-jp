@@ -42,7 +42,7 @@ inline SettingInfo buildFontFamilySetting(const SdCardFontRegistry* registry, bo
   }
 
   SettingInfo s;
-  s.nameId = isVertical ? StrId::STR_FONT_FAMILY : StrId::STR_FONT_FAMILY;
+  s.nameId = StrId::STR_FONT_FAMILY;
   s.type = SettingType::ENUM;
   s.enumValues = std::move(enumValues);
   s.enumStringValues = std::move(allStringValues);
