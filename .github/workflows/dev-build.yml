@@ -61,17 +61,7 @@ jobs:
           echo "tag_name=dev-${TIMESTAMP}" >> "$GITHUB_OUTPUT"
 
       - name: Generate otadata (force boot from ota_0)
-        run: |
-          python3 -c "
-import struct, zlib
-data = bytearray(8192)
-for off in (0, 32):
-    struct.pack_into('<I', data, off, 1)
-    data[off+4:off+24] = b'ota_0\x00'.ljust(20, b'\x00')
-    c = zlib.crc32(bytes(data[off:off+24])) & 0xFFFFFFFF
-    struct.pack_into('<I', data, off+24, c)
-with open('otadata.bin', 'wb') as f: f.write(data)
-"
+        run: python3 scripts/generate_otadata.py
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
