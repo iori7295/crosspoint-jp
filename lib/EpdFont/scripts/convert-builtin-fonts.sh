@@ -54,17 +54,5 @@ python fontconvert.py notosans_8_regular 8 \
   --additional-intervals 0x05D0,0x05EA > ../builtinFonts/notosans_8_regular.h
 
 echo ""
-echo "Generating Japanese UI supplement font..."
-# Uses NotoSansCJKjp for CJK characters needed by Japanese UI text.
-# Download URL (Noto Github):
-#   https://github.com/notofonts/noto-cjk/raw/main/Sans/OTF/Japanese/NotoSansCJKjp-Regular.otf
-# Extract the codepoints from japanese.yaml and generate a compact font:
-#   python fontconvert.py ja_supplement_ui 12 NotoSansCJKjp-Regular.otf \
-#     --codepoints-file /tmp/jp_ui_codepoints.txt \
-#     > ../builtinFonts/ja_supplement_ui_12_regular.h
-# The pre-generated font data is committed to the repo.  To regenerate,
-# install freetype-py and fonttools, then run the commands above.
-
-echo ""
 echo "Running compression verification..."
 python verify_compression.py ../builtinFonts/

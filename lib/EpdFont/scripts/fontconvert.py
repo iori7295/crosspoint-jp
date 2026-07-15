@@ -23,7 +23,6 @@ parser.add_argument("--additional-intervals", dest="additional_intervals", actio
 parser.add_argument("--compress", dest="compress", action="store_true", help="Compress glyph bitmaps using DEFLATE with group-based compression.")
 parser.add_argument("--force-autohint", dest="force_autohint", action="store_true", help="Force FreeType auto-hinter instead of native font hinting. Improves stem width consistency for fonts with weak or no native TrueType hints.")
 parser.add_argument("--pnum", dest="pnum", action="store_true", help="Use proportional numerals (pnum OpenType feature) instead of default tabular figures. Reduces visual gaps between digits in running prose.")
-parser.add_argument("--codepoints-file", dest="codepoints_file", type=str, help="File with Unicode codepoints to include, one per line. These replace the default intervals entirely.")
 args = parser.parse_args()
 
 import freetype
@@ -139,22 +138,6 @@ intervals = [
 add_ints = []
 if args.additional_intervals:
     add_ints = [tuple([int(n, base=0) for n in i.split(",")]) for i in args.additional_intervals]
-
-if args.codepoints_file:
-    with open(args.codepoints_file, 'r') as f:
-        raw = [int(line.strip(), 0) for line in f if line.strip()]
-    raw.sort()
-    cp_intervals = []
-    if raw:
-        start = end = raw[0]
-        for cp in raw[1:]:
-            if cp == end + 1:
-                end = cp
-            else:
-                cp_intervals.append((start, end))
-                start = end = cp
-        cp_intervals.append((start, end))
-    intervals = cp_intervals
 
 def norm_floor(val):
     return int(math.floor(val / (1 << 6)))
@@ -589,23 +572,18 @@ if kern_map:
 
     if kern_left_class_count > 255 or kern_right_class_count > 255:
         print(f"WARNING: kerning class count exceeds uint8_t range "
-              f"(left={kern_left_class_count}, right={kern_right_class_count}), "
-              f"emitting empty kerning tables", file=sys.stderr)
-        kern_left_classes = []
-        kern_right_classes = []
-        kern_matrix = []
-        kern_left_class_count = 0
-        kern_right_class_count = 0
-    else:
-        # Build the class x class matrix
-        kern_matrix = [0] * (kern_left_class_count * kern_right_class_count)
-        for (lcp, rcp), adjust in kern_map.items():
-            lc = left_class_map[lcp] - 1
-            rc = right_class_map[rcp] - 1
-            kern_matrix[lc * kern_right_class_count + rc] = adjust
+              f"(left={kern_left_class_count}, right={kern_right_class_count})",
+              file=sys.stderr)
 
-        # Build sorted class entry lists
-        kern_left_classes = sorted(left_class_map.items())
+    # Build the class x class matrix
+    kern_matrix = [0] * (kern_left_class_count * kern_right_class_count)
+    for (lcp, rcp), adjust in kern_map.items():
+        lc = left_class_map[lcp] - 1
+        rc = right_class_map[rcp] - 1
+        kern_matrix[lc * kern_right_class_count + rc] = adjust
+
+    # Build sorted class entry lists
+    kern_left_classes = sorted(left_class_map.items())
     kern_right_classes = sorted(right_class_map.items())
 
     matrix_size = kern_left_class_count * kern_right_class_count

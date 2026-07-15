@@ -108,7 +108,7 @@ typedef struct {
 } __attribute__((packed)) EpdLigaturePair;
 
 /// Data stored for FONT AS A WHOLE
-typedef struct EpdFontData {
+typedef struct {
   const uint8_t* bitmap;                ///< Glyph bitmaps, concatenated
   const EpdGlyph* glyph;                ///< Glyph array
   const EpdUnicodeInterval* intervals;  ///< Valid unicode intervals for this font
@@ -145,10 +145,4 @@ typedef struct EpdFontData {
   /// Context pointer for glyphMissHandler (typically SdCardFont*).  Also used by
   /// GfxRenderer::getGlyphBitmap() to retrieve overflow bitmaps via SdCardFont.
   void* glyphMissCtx;
-
-  /// Optional fallback font data tried before the replacement glyph.
-  /// When set, getGlyph() falls back to this font if the codepoint is not
-  /// found in the primary font.  Used for UI fonts that need to support
-  /// additional scripts (e.g. Japanese) without embedding all glyphs.
-  const struct EpdFontData* fallback;
 } EpdFontData;
