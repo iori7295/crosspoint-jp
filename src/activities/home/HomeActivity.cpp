@@ -215,9 +215,8 @@ void HomeActivity::render(RenderLock&&) {
   renderer.clearScreen();
   bool bufferRestored = coverBufferStored && restoreCoverBuffer();
 
-  // Japanese font test: a hardcoded string drawn with the UI font.
-  // Expected: "日本語テスト" (3 CJK chars). Tofu (□) = font issue.
-  renderer.drawText(UI_12_FONT_ID, 10, 10, "日本語テスト", true, EpdFontFamily::REGULAR);
+  // Japanese font test at the TOP of the screen.
+  renderer.drawText(UI_12_FONT_ID, 10, 10, "TEST_JAPANESE_日本語テスト", true, EpdFontFamily::REGULAR);
 
   GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.homeTopPadding},
                  metrics.homeContinueReadingInMenu && !recentBooks.empty() ? recentBooks[0].title.c_str() : nullptr);
