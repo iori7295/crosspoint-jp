@@ -23,6 +23,7 @@ parser.add_argument("--additional-intervals", dest="additional_intervals", actio
 parser.add_argument("--compress", dest="compress", action="store_true", help="Compress glyph bitmaps using DEFLATE with group-based compression.")
 parser.add_argument("--force-autohint", dest="force_autohint", action="store_true", help="Force FreeType auto-hinter instead of native font hinting. Improves stem width consistency for fonts with weak or no native TrueType hints.")
 parser.add_argument("--pnum", dest="pnum", action="store_true", help="Use proportional numerals (pnum OpenType feature) instead of default tabular figures. Reduces visual gaps between digits in running prose.")
+parser.add_argument("--codepoints-file", dest="codepoints_file", type=str, help="File with Unicode codepoints (hex, one per line). Replaces default intervals.")
 args = parser.parse_args()
 
 import freetype
@@ -138,6 +139,21 @@ intervals = [
 add_ints = []
 if args.additional_intervals:
     add_ints = [tuple([int(n, base=0) for n in i.split(",")]) for i in args.additional_intervals]
+
+if args.codepoints_file:
+    with open(args.codepoints_file, 'r') as f:
+        raw = sorted({int(line.strip(), 0) for line in f if line.strip()})
+    cp_intervals = []
+    if raw:
+        start = end = raw[0]
+        for cp in raw[1:]:
+            if cp == end + 1:
+                end = cp
+            else:
+                cp_intervals.append((start, end))
+                start = end = cp
+        cp_intervals.append((start, end))
+    intervals = cp_intervals
 
 def norm_floor(val):
     return int(math.floor(val / (1 << 6)))

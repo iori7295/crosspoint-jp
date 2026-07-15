@@ -54,5 +54,18 @@ python fontconvert.py notosans_8_regular 8 \
   --additional-intervals 0x05D0,0x05EA > ../builtinFonts/notosans_8_regular.h
 
 echo ""
+echo "Generating Japanese UI font replacements..."
+# Pre-generated fonts are committed.  To regenerate:
+#   1. Download NotoSansCJKjp-Regular.otf from Google Fonts
+#   2. Generate codepoints from japanese.yaml (scripts/gen_i18n.py can list them)
+#   3. Run:
+#        python fontconvert.py ui_font_jp_10 10 NotoSansCJKjp-Regular.otf \
+#          --codepoints-file ui_codepoints.txt \
+#          > ../builtinFonts/ui_font_jp_10_regular.h
+#        python fontconvert.py ui_font_jp_12 12 NotoSansCJKjp-Regular.otf \
+#          --codepoints-file ui_codepoints.txt \
+#          > ../builtinFonts/ui_font_jp_12_regular.h
+
+echo ""
 echo "Running compression verification..."
 python verify_compression.py ../builtinFonts/

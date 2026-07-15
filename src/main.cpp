@@ -107,6 +107,14 @@ EpdFont ui12RegularFont(&ubuntu_12_regular);
 EpdFont ui12BoldFont(&ubuntu_12_bold);
 EpdFontFamily ui12FontFamily(&ui12RegularFont, &ui12BoldFont);
 
+// Japanese UI fonts: built from NotoSansCJKjp at matching sizes.
+// When the UI language is Japanese, these replace the default Ubuntu fonts
+// so that menu text (which uses CJK characters) renders correctly.
+EpdFont uiFontJp10Regular(&ui_font_jp_10);
+EpdFont uiFontJp12Regular(&ui_font_jp_12);
+EpdFontFamily uiFontJp10Family(&uiFontJp10Regular, &uiFontJp10Regular);
+EpdFontFamily uiFontJp12Family(&uiFontJp12Regular, &uiFontJp12Regular);
+
 // measurement of power button press duration calibration value
 unsigned long t1 = 0;
 unsigned long t2 = 0;
@@ -294,8 +302,17 @@ void setupDisplayAndFonts(bool seamless = false) {
   renderer.insertFont(NOTOSANS_16_FONT_ID, notosans16FontFamily);
   renderer.insertFont(NOTOSANS_18_FONT_ID, notosans18FontFamily);
 #endif  // OMIT_FONTS
-  renderer.insertFont(UI_10_FONT_ID, ui10FontFamily);
-  renderer.insertFont(UI_12_FONT_ID, ui12FontFamily);
+  // Register UI fonts. When the system language is Japanese (which requires
+  // CJK glyphs not present in the Ubuntu UI fonts), register the Japanese
+  // supplement font instead. The supplement covers both Latin and Japanese
+  // characters, so all UI text renders correctly.
+  if (SETTINGS.language == static_cast<uint8_t>(Language::JAPANESE)) {
+    renderer.insertFont(UI_10_FONT_ID, uiFontJp10Family);
+    renderer.insertFont(UI_12_FONT_ID, uiFontJp12Family);
+  } else {
+    renderer.insertFont(UI_10_FONT_ID, ui10FontFamily);
+    renderer.insertFont(UI_12_FONT_ID, ui12FontFamily);
+  }
   renderer.insertFont(SMALL_FONT_ID, smallFontFamily);
 
   // Discover and load SD card fonts
