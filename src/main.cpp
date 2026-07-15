@@ -306,6 +306,25 @@ void setupDisplayAndFonts(bool seamless = false) {
   // Discover and load SD card fonts
   sdFontSystem.begin(renderer);
 
+  // Set SD card font as fallback for UI fonts so that CJK characters
+  // not in the built-in subset (e.g. book titles, author names) still
+  // render correctly via SD font glyphs.
+  int fbId = SETTINGS.getReaderFontId(false);
+  if (fbId != 0) {
+    const auto& fbMap = renderer.getFontMap();
+    auto it = fbMap.find(fbId);
+    if (it != fbMap.end()) {
+      const EpdFontData* fbData = it->second.getData();
+      if (fbData) {
+        ui10RegularFont.data->fallback = fbData;
+        ui10BoldFont.data->fallback = fbData;
+        ui12RegularFont.data->fallback = fbData;
+        ui12BoldFont.data->fallback = fbData;
+        smallFont.data->fallback = fbData;
+      }
+    }
+  }
+
   LOG_DBG("MAIN", "Fonts setup");
 }
 

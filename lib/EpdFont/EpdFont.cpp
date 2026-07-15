@@ -155,35 +155,42 @@ uint32_t EpdFont::applyLigatures(uint32_t cp, const char*& text) const {
 }
 
 const EpdGlyph* EpdFont::getGlyph(const uint32_t cp) const {
-  const int count = data->intervalCount;
-  if (count == 0 && !data->glyphMissHandler) return nullptr;
+  // Try primary font data
+  const EpdGlyph* g = getGlyph(data, cp);
+  if (g) return g;
 
-  if (count > 0) {
-    const EpdUnicodeInterval* intervals = data->intervals;
-    const auto* end = intervals + count;
-
-    // upper_bound: range lookup. Finds the first interval with first > cp, so the
-    // interval just before it is the last one with first <= cp. That's the only
-    // candidate that could contain cp. Then we verify cp <= candidate.last.
-    const auto it = std::upper_bound(
-        intervals, end, cp, [](uint32_t value, const EpdUnicodeInterval& interval) { return value < interval.first; });
-
-    if (it != intervals) {
-      const auto& interval = *(it - 1);
-      if (cp <= interval.last) {
-        return &data->glyph[interval.offset + (cp - interval.first)];
-      }
-    }
-  }
-
-  // Codepoint not in interval table — try on-demand loading (SD card fonts).
-  if (data->glyphMissHandler) {
-    const EpdGlyph* loaded = data->glyphMissHandler(data->glyphMissCtx, cp);
-    if (loaded) return loaded;
+  // Try fallback font (e.g. SD card CJK font for UI text)
+  if (data->fallback) {
+    g = getGlyph(data->fallback, cp);
+    if (g) return g;
   }
 
   if (cp != REPLACEMENT_GLYPH) {
     return getGlyph(REPLACEMENT_GLYPH);
   }
+  return nullptr;
+}
+
+const EpdGlyph* EpdFont::getGlyph(const EpdFontData* fontData, const uint32_t cp) {
+  const int count = fontData->intervalCount;
+  if (count == 0 && !fontData->glyphMissHandler) return nullptr;
+
+  if (count > 0) {
+    const EpdUnicodeInterval* intervals = fontData->intervals;
+    const auto* end = intervals + count;
+    const auto it = std::upper_bound(
+        intervals, end, cp, [](uint32_t value, const EpdUnicodeInterval& interval) { return value < interval.first; });
+    if (it != intervals) {
+      const auto& interval = *(it - 1);
+      if (cp <= interval.last) {
+        return &fontData->glyph[interval.offset + (cp - interval.first)];
+      }
+    }
+  }
+
+  if (fontData->glyphMissHandler) {
+    return fontData->glyphMissHandler(fontData->glyphMissCtx, cp);
+  }
+
   return nullptr;
 }
