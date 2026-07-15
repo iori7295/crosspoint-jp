@@ -33,6 +33,7 @@ jobs:
             gh release download "${DEV_TAG}" --repo "${REPO}" --pattern "bootloader.bin" --dir _site/dev
             gh release download "${DEV_TAG}" --repo "${REPO}" --pattern "partitions.bin" --dir _site/dev
             gh release download "${DEV_TAG}" --repo "${REPO}" --pattern "firmware.bin" --dir _site/dev
+            gh release download "${DEV_TAG}" --repo "${REPO}" --pattern "otadata.bin" --dir _site/dev || true
             cat > _site/manifest_dev.json <<MANIFEST
           {
             "name": "CrossPoint JP (Dev)",
@@ -43,6 +44,7 @@ jobs:
                 "parts": [
                   { "path": "dev/bootloader.bin", "offset": 0 },
                   { "path": "dev/partitions.bin", "offset": 32768 },
+                  { "path": "dev/otadata.bin", "offset": 57344 },
                   { "path": "dev/firmware.bin", "offset": 65536 }
                 ]
               }
