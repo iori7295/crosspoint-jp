@@ -16,7 +16,7 @@
 
 // Build the font family setting dynamically. When registry is non-null, SD card fonts
 // are appended after the built-in fonts. Otherwise only built-in fonts are listed.
-inline SettingInfo buildFontFamilySetting(const SdCardFontRegistry* registry) {
+inline SettingInfo buildFontFamilySetting(const SdCardFontRegistry* registry, bool isVertical) {
   // Built-in font labels (StrId)
   std::vector<StrId> enumValues = {StrId::STR_NOTO_SERIF, StrId::STR_NOTO_SANS};
   // Runtime string labels for SD card fonts
@@ -34,9 +34,6 @@ inline SettingInfo buildFontFamilySetting(const SdCardFontRegistry* registry) {
   const int sdFontCount = static_cast<int>(enumStringValues.size());
 
   // Total option count = built-in + SD card families
-  // For the combined enumStringValues: we need all entries as strings (built-in names + SD names)
-  // The render code checks enumStringValues first, then enumValues. So we build enumStringValues
-  // with all options when SD fonts are present.
   std::vector<std::string> allStringValues;
   if (sdFontCount > 0) {
     allStringValues.push_back(I18N.get(StrId::STR_NOTO_SERIF));
@@ -45,11 +42,11 @@ inline SettingInfo buildFontFamilySetting(const SdCardFontRegistry* registry) {
   }
 
   SettingInfo s;
-  s.nameId = StrId::STR_FONT_FAMILY;
+  s.nameId = isVertical ? StrId::STR_FONT_FAMILY : StrId::STR_FONT_FAMILY;
   s.type = SettingType::ENUM;
   s.enumValues = std::move(enumValues);
   s.enumStringValues = std::move(allStringValues);
-  s.key = "fontFamily";
+  s.key = isVertical ? "fontFamilyV" : "fontFamilyH";
   s.category = StrId::STR_CAT_READER;
 
   // Capture registry families by copy for the lambdas
@@ -61,28 +58,28 @@ inline SettingInfo buildFontFamilySetting(const SdCardFontRegistry* registry) {
                    [](const SdCardFontFamilyInfo& f) { return f.name; });
   }
 
-  s.valueGetter = [sdFamilyNames]() -> uint8_t {
-    // If an SD card font is selected, find its index
-    if (SETTINGS.sdFontFamilyName[0] != '\0') {
+  s.valueGetter = [sdFamilyNames, isVertical]() -> uint8_t {
+    auto& ds = SETTINGS.getDirectionSettings(isVertical);
+    if (ds.sdFontFamilyName[0] != '\0') {
       for (int i = 0; i < static_cast<int>(sdFamilyNames.size()); i++) {
-        if (sdFamilyNames[i] == SETTINGS.sdFontFamilyName) {
+        if (sdFamilyNames[i] == ds.sdFontFamilyName) {
           return static_cast<uint8_t>(CrossPointSettings::BUILTIN_FONT_COUNT + i);
         }
       }
-      // SD font name not found in registry — fall through to built-in
     }
-    return SETTINGS.fontFamily < CrossPointSettings::BUILTIN_FONT_COUNT ? SETTINGS.fontFamily : 0;
+    return ds.fontFamily < CrossPointSettings::BUILTIN_FONT_COUNT ? ds.fontFamily : 0;
   };
 
-  s.valueSetter = [sdFamilyNames](uint8_t v) {
+  s.valueSetter = [sdFamilyNames, isVertical](uint8_t v) {
+    auto& ds = SETTINGS.getDirectionSettings(isVertical);
     if (v < CrossPointSettings::BUILTIN_FONT_COUNT) {
-      SETTINGS.fontFamily = v;
-      SETTINGS.sdFontFamilyName[0] = '\0';
+      ds.fontFamily = v;
+      ds.sdFontFamilyName[0] = '\0';
     } else {
       int sdIdx = v - CrossPointSettings::BUILTIN_FONT_COUNT;
       if (sdIdx < static_cast<int>(sdFamilyNames.size())) {
-        strncpy(SETTINGS.sdFontFamilyName, sdFamilyNames[sdIdx].c_str(), sizeof(SETTINGS.sdFontFamilyName) - 1);
-        SETTINGS.sdFontFamilyName[sizeof(SETTINGS.sdFontFamilyName) - 1] = '\0';
+        strncpy(ds.sdFontFamilyName, sdFamilyNames[sdIdx].c_str(), sizeof(ds.sdFontFamilyName) - 1);
+        ds.sdFontFamilyName[sizeof(ds.sdFontFamilyName) - 1] = '\0';
       }
     }
   };
@@ -259,7 +256,8 @@ inline std::vector<SettingInfo> getSettingsList(const SdCardFontRegistry* regist
   if (registry && registry->getFamilyCount() > 0) {
     auto it = std::find_if(v.begin(), v.end(), [](const SettingInfo& s) { return s.nameId == StrId::STR_FONT_FAMILY; });
     if (it != v.end()) {
-      *it = buildFontFamilySetting(registry);
+      *it = buildFontFamilySetting(registry, false);
+      it = v.insert(it + 1, buildFontFamilySetting(registry, true));
     }
   }
   return v;
