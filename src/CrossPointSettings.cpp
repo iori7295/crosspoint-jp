@@ -475,3 +475,4 @@ int CrossPointSettings::getTableFontId(const bool isVertical) const {
     }
   }
 }
+
