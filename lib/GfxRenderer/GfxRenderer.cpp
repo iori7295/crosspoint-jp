@@ -95,10 +95,7 @@ void GfxRenderer::begin() {
 bool GfxRenderer::isFontCacheScanning() const { return fontCacheManager_ && fontCacheManager_->isScanning(); }
 
 void GfxRenderer::insertFont(const int fontId, EpdFontFamily font) {
-  auto result = fontMap.insert({fontId, font});
-  if (!result.second) {
-    LOG_ERR("GFX", "Font ID %d already registered, ignoring duplicate", fontId);
-  }
+  fontMap.insert_or_assign(fontId, font);
 }
 
 // Translate logical (x,y) coordinates to physical panel coordinates based on current orientation
