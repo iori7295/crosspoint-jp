@@ -96,7 +96,7 @@ EpdFontFamily notosans18FontFamily(&notosans18RegularFont, &notosans18BoldFont, 
 
 #endif  // OMIT_FONTS
 
-EpdFont smallFont(&notosans_8_regular);
+EpdFont smallFont(&ui_font_jp_8);
 EpdFontFamily smallFontFamily(&smallFont);
 
 // UI fonts: always use NotoSansCJKjp which covers both Latin and CJK

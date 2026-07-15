@@ -39,3 +39,4 @@
 #include <builtinFonts/ubuntu_12_regular.h>
 #include <builtinFonts/ui_font_jp_10_regular.h>
 #include <builtinFonts/ui_font_jp_12_regular.h>
+#include <builtinFonts/ui_font_jp_8_regular.h>
