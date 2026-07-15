@@ -13,6 +13,8 @@
 #include "components/UITheme.h"
 #include "fontIds.h"
 
+extern void setupUiFontFallback();
+
 DirectionSettingsActivity::DirectionSettingsActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
                                                      bool isVertical)
     : Activity("DirSettings", renderer, mappedInput), isVertical(isVertical) {}
@@ -111,6 +113,8 @@ void DirectionSettingsActivity::toggleCurrentItem() {
           std::make_unique<FontSelectionActivity>(renderer, mappedInput, &sdFontSystem.registry(), isVertical),
           [this](const ActivityResult&) {
             SETTINGS.saveToFile();
+            sdFontSystem.ensureLoaded(renderer, isVertical);
+            setupUiFontFallback();
             skipNextButtonCheck = true;
             requestUpdate();
           });

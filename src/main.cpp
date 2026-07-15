@@ -276,6 +276,35 @@ void enterDeepSleep(bool fromTimeout = false) {
   powerManager.startDeepSleep(gpio);
 }
 
+void setupUiFontFallback() {
+  // Clear existing fallbacks first
+  ui10RegularFont.data->fallback = nullptr;
+  ui10BoldFont.data->fallback = nullptr;
+  ui12RegularFont.data->fallback = nullptr;
+  ui12BoldFont.data->fallback = nullptr;
+  smallFont.data->fallback = nullptr;
+
+  // Try to find a CJK-capable SD font for UI fallback.
+  // Prefer horizontal reader font; fall back to vertical.
+  auto trySet = [](int fbId) {
+    if (fbId == 0) return false;
+    const auto& fbMap = renderer.getFontMap();
+    auto it = fbMap.find(fbId);
+    if (it == fbMap.end()) return false;
+    const EpdFontData* fbData = it->second.getData();
+    if (!fbData) return false;
+    ui10RegularFont.data->fallback = fbData;
+    ui10BoldFont.data->fallback = fbData;
+    ui12RegularFont.data->fallback = fbData;
+    ui12BoldFont.data->fallback = fbData;
+    smallFont.data->fallback = fbData;
+    return true;
+  };
+
+  if (trySet(SETTINGS.getReaderFontId(false))) return;
+  trySet(SETTINGS.getReaderFontId(true));
+}
+
 void setupDisplayAndFonts(bool seamless = false) {
   display.begin(seamless);
   renderer.begin();
@@ -305,25 +334,7 @@ void setupDisplayAndFonts(bool seamless = false) {
 
   // Discover and load SD card fonts
   sdFontSystem.begin(renderer);
-
-  // Set SD card font as fallback for UI fonts so that CJK characters
-  // not in the built-in subset (e.g. book titles, author names) still
-  // render correctly via SD font glyphs.
-  int fbId = SETTINGS.getReaderFontId(false);
-  if (fbId != 0) {
-    const auto& fbMap = renderer.getFontMap();
-    auto it = fbMap.find(fbId);
-    if (it != fbMap.end()) {
-      const EpdFontData* fbData = it->second.getData();
-      if (fbData) {
-        ui10RegularFont.data->fallback = fbData;
-        ui10BoldFont.data->fallback = fbData;
-        ui12RegularFont.data->fallback = fbData;
-        ui12BoldFont.data->fallback = fbData;
-        smallFont.data->fallback = fbData;
-      }
-    }
-  }
+  setupUiFontFallback();
 
   LOG_DBG("MAIN", "Fonts setup");
 }
