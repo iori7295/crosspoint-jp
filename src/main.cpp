@@ -321,6 +321,16 @@ void setupDisplayAndFonts(bool seamless = false) {
   LOG_DBG("MAIN", "Fonts setup");
 }
 
+void updateUiFontsForLanguage() {
+  if (SETTINGS.language == static_cast<uint8_t>(Language::JAPANESE)) {
+    renderer.insertFont(UI_10_FONT_ID, uiFontJp10Family);
+    renderer.insertFont(UI_12_FONT_ID, uiFontJp12Family);
+  } else {
+    renderer.insertFont(UI_10_FONT_ID, ui10FontFamily);
+    renderer.insertFont(UI_12_FONT_ID, ui12FontFamily);
+  }
+}
+
 void setup() {
   t1 = millis();
 

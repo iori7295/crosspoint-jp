@@ -11,6 +11,8 @@
 #include "MappedInputManager.h"
 #include "fontIds.h"
 
+extern void updateUiFontsForLanguage();
+
 void LanguageSelectActivity::onEnter() {
   Activity::onEnter();
 
@@ -71,6 +73,9 @@ void LanguageSelectActivity::handleSelection() {
 
   SETTINGS.language = langIndex;
   SETTINGS.saveToFile();
+
+  // Update UI font immediately: CJK-capable font for Japanese, Ubuntu for others.
+  updateUiFontsForLanguage();
 
   // Return to previous page
   onBack();
