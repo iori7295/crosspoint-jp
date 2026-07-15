@@ -14,17 +14,8 @@
 // support a new manifest schema.
 #define FONTS_MANIFEST_VERSION 1
 
-#ifndef FONT_MANIFEST_URL
-// Manifest + .cpfont assets are published by .github/workflows/release-fonts.yml
-// to the crosspoint-fonts repo under the "sd-fonts-m<META>-b<BIN>" tag. The tag
-// pattern must stay in sync with the workflow; it derives its version numbers
-// from lib/EpdFont/scripts/cpfont_version.py.
-#define FONT_MANIFEST_URL_STRINGIFY_INNER(x) #x
-#define FONT_MANIFEST_URL_STRINGIFY(x) FONT_MANIFEST_URL_STRINGIFY_INNER(x)
-#define FONT_MANIFEST_URL                                                                                           \
-  "https://github.com/iori7295/crosspoint-jp/releases/download/sd-fonts-m" FONT_MANIFEST_URL_STRINGIFY( \
-      FONTS_MANIFEST_VERSION) "-b" FONT_MANIFEST_URL_STRINGIFY(CPFONT_VERSION) "/fonts.json"
-#endif
+// Use zrn-ns's font release for comparison testing.
+#define FONT_MANIFEST_URL "https://github.com/zrn-ns/crosspoint-jp/releases/download/sd-fonts/fonts.json"
 
 class FontDownloadActivity : public Activity {
  public:
