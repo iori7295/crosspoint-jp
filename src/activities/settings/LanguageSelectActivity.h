@@ -4,6 +4,7 @@
 #include <I18n.h>
 
 #include <functional>
+#include <vector>
 
 #include "activities/Activity.h"
 #include "components/UITheme.h"
@@ -26,9 +27,9 @@ class LanguageSelectActivity final : public Activity {
 
  private:
   void handleSelection();
-
   void onBack() { finish(); }
   ButtonNavigator buttonNavigator;
   int selectedIndex = 0;
-  constexpr static uint8_t totalItems = getLanguageCount();
+  int totalItems = 0;
+  std::vector<uint8_t> visibleLanguages;
 };

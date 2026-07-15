@@ -298,6 +298,14 @@ void setupDisplayAndFonts(bool seamless = false) {
   renderer.insertFont(UI_12_FONT_ID, ui12FontFamily);
   renderer.insertFont(SMALL_FONT_ID, smallFontFamily);
 
+  // Set Japanese UI supplement as fallback for UI fonts.
+  // This provides CJK glyphs that are missing from the Ubuntu UI fonts,
+  // enabling correct rendering of Japanese menu text.
+  ui10RegularFont.fallback = &ja_supplement_ui;
+  ui10BoldFont.fallback = &ja_supplement_ui;
+  ui12RegularFont.fallback = &ja_supplement_ui;
+  ui12BoldFont.fallback = &ja_supplement_ui;
+
   // Discover and load SD card fonts
   sdFontSystem.begin(renderer);
 

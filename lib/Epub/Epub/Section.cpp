@@ -248,13 +248,31 @@ bool Section::createSectionFile(const int fontId, const float lineCompression, c
     }
   }
 
+  bool effectiveVerticalMode = verticalMode;
+
+  // If the book's CSS specifies writing-mode: vertical-rl on the body or html
+  // element, override the caller's verticalMode. This enables vertical layout
+  // for EPUBs that declare vertical writing via CSS without relying solely on
+  // metadata.
+  if (cssParser) {
+    CssStyle bodyStyle = cssParser->resolveStyle("body", "");
+    if (!bodyStyle.hasWritingMode() || bodyStyle.writingMode != CssWritingMode::VerticalRl) {
+      bodyStyle = cssParser->resolveStyle("html", "");
+      if (bodyStyle.hasWritingMode() && bodyStyle.writingMode == CssWritingMode::VerticalRl) {
+        effectiveVerticalMode = true;
+      }
+    } else {
+      effectiveVerticalMode = true;
+    }
+  }
+
   ChapterHtmlSlimParser visitor(
       epub, tmpHtmlPath, renderer, fontId, lineCompression, extraParagraphSpacing, paragraphAlignment, viewportWidth,
       viewportHeight, hyphenationEnabled, focusReadingEnabled,
       [this, &lut](std::unique_ptr<Page> page, const uint16_t paragraphIndex, const uint16_t listItemIndex) {
         lut.push_back({this->onPageComplete(std::move(page)), paragraphIndex, listItemIndex});
       },
-      embeddedStyle, contentBase, imageBasePath, imageRendering, std::move(tocAnchors), popupFn, cssParser, verticalMode);
+      embeddedStyle, contentBase, imageBasePath, imageRendering, std::move(tocAnchors), popupFn, cssParser, effectiveVerticalMode);
   Hyphenator::setPreferredLanguage(epub->getLanguage());
   success = visitor.parseAndBuildPages();
 
