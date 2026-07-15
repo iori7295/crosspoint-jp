@@ -287,7 +287,7 @@ void setupUiFontFallback() {
   // Try to find a CJK-capable SD font for UI fallback.
   // Prefer horizontal reader font; fall back to vertical.
   auto trySet = [](int fbId) {
-    if (fbId == 0) return false;
+    if (fbId == 0 || !renderer.isSdCardFont(fbId)) return false;
     const auto& fbMap = renderer.getFontMap();
     auto it = fbMap.find(fbId);
     if (it == fbMap.end()) return false;
