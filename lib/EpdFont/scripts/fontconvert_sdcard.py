@@ -899,6 +899,8 @@ def main():
                         help="Output directory for multi-size mode.")
     parser.add_argument("--list-presets", action="store_true",
                         help="List available interval presets and exit.")
+    parser.add_argument("--codepoints-file", dest="codepoints_file",
+                        help="File with Unicode codepoints (hex, one per line) to include in addition to --intervals.")
 
     # Multi-style mode: per-style font file arguments (generates v4 .cpfont)
     parser.add_argument("--regular", dest="font_regular",
@@ -958,6 +960,31 @@ def main():
         sys.exit(1)
 
     intervals = resolve_intervals(args.intervals)
+
+    # Merge codepoints from file (merged into intervals, duplicates handled by sort+merge)
+    if args.codepoints_file:
+        with open(args.codepoints_file) as f:
+            extra = sorted({int(line.strip(), 16) for line in f if line.strip() and not line.startswith('#')})
+        # Convert individual codepoints to (start,end) intervals and merge
+        extra_intervals = []
+        if extra:
+            start = end = extra[0]
+            for cp in extra[1:]:
+                if cp == end + 1:
+                    end = cp
+                else:
+                    extra_intervals.append((start, end))
+                    start = end = cp
+            extra_intervals.append((start, end))
+        # Merge with resolved intervals
+        all_intervals = sorted(intervals + extra_intervals)
+        merged = []
+        for s, e in all_intervals:
+            if merged and s <= merged[-1][1] + 1:
+                merged[-1] = (merged[-1][0], max(merged[-1][1], e))
+            else:
+                merged.append((s, e))
+        intervals = merged
 
     # Determine sizes
     if args.sizes:
