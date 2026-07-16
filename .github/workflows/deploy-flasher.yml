@@ -33,7 +33,6 @@ jobs:
             gh release download "${DEV_TAG}" --repo "${REPO}" --pattern "bootloader.bin" --dir _site/dev
             gh release download "${DEV_TAG}" --repo "${REPO}" --pattern "partitions.bin" --dir _site/dev
             gh release download "${DEV_TAG}" --repo "${REPO}" --pattern "firmware.bin" --dir _site/dev
-            gh release download "${DEV_TAG}" --repo "${REPO}" --pattern "firmware_ota1_empty.bin" --dir _site/dev || true
             cat > _site/manifest_dev.json <<MANIFEST
           {
             "name": "CrossPoint JP (Dev)",
@@ -44,8 +43,7 @@ jobs:
                 "parts": [
                   { "path": "dev/bootloader.bin", "offset": 0 },
                   { "path": "dev/partitions.bin", "offset": 32768 },
-                  { "path": "dev/firmware.bin", "offset": 65536 },
-                  { "path": "dev/firmware_ota1_empty.bin", "offset": 6627328 }
+                  { "path": "dev/firmware.bin", "offset": 65536 }
                 ]
               }
             ]
@@ -58,7 +56,6 @@ jobs:
             gh release download "${STABLE_TAG}" --repo "${REPO}" --pattern "bootloader.bin" --dir _site/stable
             gh release download "${STABLE_TAG}" --repo "${REPO}" --pattern "partitions.bin" --dir _site/stable
             gh release download "${STABLE_TAG}" --repo "${REPO}" --pattern "firmware.bin" --dir _site/stable
-            gh release download "${STABLE_TAG}" --repo "${REPO}" --pattern "firmware_ota1_empty.bin" --dir _site/stable || true
             cat > _site/manifest_stable.json <<MANIFEST
           {
             "name": "CrossPoint JP (Stable)",
@@ -69,8 +66,7 @@ jobs:
                 "parts": [
                   { "path": "stable/bootloader.bin", "offset": 0 },
                   { "path": "stable/partitions.bin", "offset": 32768 },
-                  { "path": "stable/firmware.bin", "offset": 65536 },
-                  { "path": "stable/firmware_ota1_empty.bin", "offset": 6627328 }
+                  { "path": "stable/firmware.bin", "offset": 65536 }
                 ]
               }
             ]
