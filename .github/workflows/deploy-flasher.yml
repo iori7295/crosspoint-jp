@@ -43,6 +43,7 @@ jobs:
                 "parts": [
                   { "path": "dev/bootloader.bin", "offset": 0 },
                   { "path": "dev/partitions.bin", "offset": 32768 },
+                  { "path": "dev/otadata.bin", "offset": 57344 },
                   { "path": "dev/firmware.bin", "offset": 65536 },
                   { "path": "dev/firmware.bin", "offset": 6627328 }
                 ]
@@ -67,6 +68,8 @@ jobs:
                 "parts": [
                   { "path": "stable/bootloader.bin", "offset": 0 },
                   { "path": "stable/partitions.bin", "offset": 32768 },
+                  { "path": "dev/otadata.bin", "offset": 57344 },
+                  { "path": "stable/otadata.bin", "offset": 57344 },
                   { "path": "stable/firmware.bin", "offset": 65536 },
                   { "path": "stable/firmware.bin", "offset": 6627328 }
                 ]
