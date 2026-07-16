@@ -113,6 +113,7 @@ void DirectionSettingsActivity::toggleCurrentItem() {
           std::make_unique<FontSelectionActivity>(renderer, mappedInput, &sdFontSystem.registry(), isVertical),
           [this](const ActivityResult&) {
             SETTINGS.saveToFile();
+            sdFontSystem.markRegistryDirty();
             sdFontSystem.ensureLoaded(renderer, isVertical);
             setupUiFontFallback();
             skipNextButtonCheck = true;

@@ -46,13 +46,14 @@ jobs:
         run: |
           set -euo pipefail
           pio run -e gh_release
-          firmware="$(find .pio/build -maxdepth 3 -type f -path "*/firmware.bin" | grep "/gh_release/" | head -n1)"
-          bootloader="$(find .pio/build -maxdepth 3 -type f -path "*/bootloader.bin" | grep "/gh_release/" | head -n1)"
-          partitions="$(find .pio/build -maxdepth 3 -type f -path "*/partitions.bin" | grep "/gh_release/" | head -n1)"
+          firmware="$(find .pio/build -maxdepth 3 -type f -path '*/firmware.bin' | grep '/gh_release/' | head -n1)"
+          bootloader="$(find .pio/build -maxdepth 3 -type f -path '*/bootloader.bin' | grep '/gh_release/' | head -n1)"
+          partitions="$(find .pio/build -maxdepth 3 -type f -path '*/partitions.bin' | grep '/gh_release/' | head -n1)"
           if [ -z "${firmware}" ] || [ -z "${bootloader}" ] || [ -z "${partitions}" ]; then exit 1; fi
           cp "${firmware}" firmware.bin
           cp "${bootloader}" bootloader.bin
           cp "${partitions}" partitions.bin
+          python3 -c "open('firmware_ota1_empty.bin','wb').write(b'\\x00'*4096)"
 
       - name: Generate release metadata
         id: meta
@@ -74,6 +75,6 @@ jobs:
             firmware.bin
             bootloader.bin
             partitions.bin
-            otadata.bin
+            firmware_ota1_empty.bin
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
