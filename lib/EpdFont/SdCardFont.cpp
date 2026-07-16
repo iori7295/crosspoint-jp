@@ -1202,21 +1202,44 @@ int SdCardFont::buildAdvanceTableRange(Iter begin, Iter end, bool includeSpace, 
 
   unsigned long startMs = millis();
 
+  // Chunked processing: collect up to CHUNK_SIZE unique codepoints into a
+  // fixed stack buffer, flush to the advance table via fetchAdvancesForCodepoints,
+  // reset, and continue.  This eliminates the large heap allocation (previously
+  // up to 4KB) that failed under heap fragmentation on the 380 KB C3.
+  static constexpr uint32_t CHUNK_SIZE = 256;
   // +2 reserved slots for space and hyphen injected after the main scan.
-  // Reduced from 4096 (16KB) to 1024 (4KB) for Japanese text: one page has at
-  // most a few hundred unique CJK characters, while the full 16KB allocation
-  // fails on heap-fragmented ESP32-C3 after extended use.
-  static constexpr uint32_t MAX_UNIQUE_CODEPOINTS = 1024;
-  uint32_t* codepoints = new (std::nothrow) uint32_t[MAX_UNIQUE_CODEPOINTS + 2];
-  if (!codepoints) {
-    LOG_ERR("SDCF", "buildAdvanceTable: failed to allocate codepoint buffer (%u bytes)", MAX_UNIQUE_CODEPOINTS * 4);
-    return -1;
-  }
+  uint32_t codepoints[CHUNK_SIZE + 2];
   uint32_t cpCount = 0;
-  bool hitCap = false;
+  int totalMissed = 0;
+  bool anyFetched = false;
 
-  for (auto it = begin; it != end && !hitCap; ++it) {
-    hitCap = collectUniqueCodepoints(asCStr(*it), codepoints, cpCount, MAX_UNIQUE_CODEPOINTS);
+  auto flushChunk = [&]() -> bool {
+    if (cpCount == 0) return true;
+    std::sort(codepoints, codepoints + cpCount);
+    int missed = fetchAdvancesForCodepoints(codepoints, cpCount, styleMask);
+    if (missed < 0) return false;
+    totalMissed += missed;
+    cpCount = 0;
+    anyFetched = true;
+    return true;
+  };
+
+  for (auto it = begin; it != end; ++it) {
+    const unsigned char* p = reinterpret_cast<const unsigned char*>(asCStr(*it));
+    while (*p) {
+      uint32_t cp = utf8NextCodepoint(&p);
+      if (cp == 0) break;
+      bool found = false;
+      for (uint32_t i = 0; i < cpCount; i++) {
+        if (codepoints[i] == cp) { found = true; break; }
+      }
+      if (!found) {
+        codepoints[cpCount++] = cp;
+        if (cpCount >= CHUNK_SIZE) {
+          if (!flushChunk()) return -1;
+        }
+      }
+    }
   }
 
   if (includeSpace && std::none_of(codepoints, codepoints + cpCount, [](uint32_t c) { return c == ' '; }))
@@ -1224,13 +1247,8 @@ int SdCardFont::buildAdvanceTableRange(Iter begin, Iter end, bool includeSpace, 
   if (includeHyphen && std::none_of(codepoints, codepoints + cpCount, [](uint32_t c) { return c == '-'; }))
     codepoints[cpCount++] = '-';
 
-  if (hitCap) {
-    LOG_ERR("SDCF", "buildAdvanceTable: unique codepoint cap (%u) hit, layout may be approximate",
-            MAX_UNIQUE_CODEPOINTS);
-  }
-  std::sort(codepoints, codepoints + cpCount);
-  int totalMissed = fetchAdvancesForCodepoints(codepoints, cpCount, styleMask);
-  delete[] codepoints;
+  if (!flushChunk()) return -1;
+
   stats_.prewarmTotalMs = millis() - startMs;
   return totalMissed;
 }
