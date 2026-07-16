@@ -114,8 +114,6 @@ void DirectionSettingsActivity::toggleCurrentItem() {
           [this](const ActivityResult&) {
             SETTINGS.saveToFile();
             sdFontSystem.markRegistryDirty();
-            sdFontSystem.ensureLoaded(renderer, isVertical);
-            setupUiFontFallback();
             skipNextButtonCheck = true;
             requestUpdate();
           });
