@@ -21,7 +21,7 @@
 // from lib/EpdFont/scripts/cpfont_version.py.
 // Use raw.githubusercontent.com for the manifest to avoid GitHub release CDN
 // redirect + gzip issues with the ESP32 HTTP client.
-#define FONT_MANIFEST_URL "https://raw.githubusercontent.com/iori7295/crosspoint-jp/gh-pages/fonts.json"
+#define FONT_MANIFEST_URL "https://raw.githubusercontent.com/iori7295/crosspoint-jp/main/scripts/manifest_fonts.json"
 #endif
 
 class FontDownloadActivity : public Activity {
