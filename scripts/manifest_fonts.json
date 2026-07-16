@@ -4,38 +4,38 @@
   "families": [
     {
       "name": "BIZUDGothic",
-      "description": "UD Gothic Japanese (MORISAWA)",
+      "description": "UD Gothic Japanese",
       "styles": [],
       "files": [
         {
           "name": "BIZUDGothic_8.cpfont",
-          "size": 2053295,
-          "crc32": 416977448
+          "size": 928232,
+          "crc32": 1342204603
         },
         {
           "name": "BIZUDGothic_10.cpfont",
-          "size": 2696517,
-          "crc32": 1295268446
+          "size": 1250647,
+          "crc32": 908154732
         },
         {
           "name": "BIZUDGothic_12.cpfont",
-          "size": 3501116,
-          "crc32": 1882289012
+          "size": 1639932,
+          "crc32": 2599994707
         },
         {
           "name": "BIZUDGothic_14.cpfont",
-          "size": 4589566,
-          "crc32": 3153757823
+          "size": 2190994,
+          "crc32": 2173224149
         },
         {
           "name": "BIZUDGothic_16.cpfont",
-          "size": 5649990,
-          "crc32": 1237515314
+          "size": 2716277,
+          "crc32": 1170891839
         },
         {
           "name": "BIZUDGothic_18.cpfont",
-          "size": 7331469,
-          "crc32": 1404265747
+          "size": 3548002,
+          "crc32": 4248760425
         }
       ]
     }
