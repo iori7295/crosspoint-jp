@@ -1203,7 +1203,10 @@ int SdCardFont::buildAdvanceTableRange(Iter begin, Iter end, bool includeSpace, 
   unsigned long startMs = millis();
 
   // +2 reserved slots for space and hyphen injected after the main scan.
-  static constexpr uint32_t MAX_UNIQUE_CODEPOINTS = 4096;
+  // Reduced from 4096 (16KB) to 1024 (4KB) for Japanese text: one page has at
+  // most a few hundred unique CJK characters, while the full 16KB allocation
+  // fails on heap-fragmented ESP32-C3 after extended use.
+  static constexpr uint32_t MAX_UNIQUE_CODEPOINTS = 1024;
   uint32_t* codepoints = new (std::nothrow) uint32_t[MAX_UNIQUE_CODEPOINTS + 2];
   if (!codepoints) {
     LOG_ERR("SDCF", "buildAdvanceTable: failed to allocate codepoint buffer (%u bytes)", MAX_UNIQUE_CODEPOINTS * 4);
