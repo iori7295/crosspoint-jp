@@ -1119,7 +1119,13 @@ void ParsedText::extractLine(const size_t breakIndex, const int pageWidth, const
   std::vector<int16_t> lineXPos;
   lineXPos.reserve(lineWordCount);
 
-  if (willReorder) {
+  // Heuristic: if the largest allocatable block is too small for the reorder
+  // vectors, skip Bidi reordering to avoid abort() from std::bad_alloc
+  // (plain operator new has no std::nothrow and -fno-exceptions means terminate).
+  const bool canReorder = willReorder && visualOrderScratch.size() > 0 &&
+      ESP.getMaxAllocHeap() >= static_cast<int>(visualOrderScratch.size() * 8);
+
+  if (canReorder) {
     reorderedWordsScratch.clear();
     reorderedStylesScratch.clear();
     reorderedWidthsScratch.clear();
