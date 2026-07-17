@@ -9,7 +9,7 @@
 class CrossPointSettings {
  private:
   // Private constructor for singleton
-  CrossPointSettings() = default;
+  CrossPointSettings() { vertical.charSpacing = 15; }
 
   // Static instance
   static CrossPointSettings instance;
@@ -220,6 +220,9 @@ class CrossPointSettings {
   };
   DirectionSettings horizontal;
   DirectionSettings vertical;
+  // Vertical reading benefits from default character spacing (∼15% of CJK char width)
+  // to improve readability. The horizontal default stays at 0 because Latin text
+  // uses inter-word spacing and does not need extra character gaps.
 
   // Text rendering settings (kept for backward compat / migration)
   uint8_t extraParagraphSpacing = 1;

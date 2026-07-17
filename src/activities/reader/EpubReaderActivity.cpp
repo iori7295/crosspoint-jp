@@ -877,6 +877,10 @@ void EpubReaderActivity::render(RenderLock&& lock) {
       GUI.drawPopup(renderer, tr(STR_INDEXING));
       renderer.displayBuffer();
 
+      // Free font caches before the memory-intensive section build.
+      auto* fcm = renderer.getFontCacheManager();
+      fcm->clearCache();
+
       const auto popupFn = [this]() {
         GUI.drawPopup(renderer, tr(STR_INDEXING));
         renderer.displayBuffer();
@@ -1053,6 +1057,12 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
   const auto t0 = millis();
   const int fontId = SETTINGS.getReaderFontId(verticalMode);
   const bool needsTextGrayscale = SETTINGS.getDirectionSettings(verticalMode).textAntiAliasing;
+
+  // Ensure ruby font is set for the rendering pass.
+  TextBlock::rubyFontId = SMALL_FONT_ID;
+
+  // Apply vertical character spacing from direction settings.
+  renderer.setVerticalCharSpacing(SETTINGS.getDirectionSettings(verticalMode).charSpacing);
 
   // Font prewarm: scan pass accumulates text, then prewarm, then real render
   auto* fcm = renderer.getFontCacheManager();

@@ -29,6 +29,64 @@ constexpr size_t PARSE_BUFFER_SIZE = 1024;
 // on resource-constrained devices (~380KB heap). TOC anchors bypass this cap.
 constexpr size_t MAX_ANCHORS_PER_CHAPTER = 1024;
 
+// Minimum free heap to continue parsing. Below this, flush the text block early
+// to prevent abort() from failed allocations (no C++ exceptions on ESP32).
+constexpr size_t MIN_FREE_HEAP_FOR_PARSING = 20 * 1024;  // 20KB
+
+// Decode a single Unicode codepoint from UTF-8 bytes. Returns 0 on invalid data.
+uint32_t decodeUtf8Codepoint(const char* s, int maxLen) {
+  if (maxLen <= 0) return 0;
+  auto b0 = static_cast<uint8_t>(s[0]);
+  if ((b0 & 0x80) == 0) return b0;
+  if (maxLen >= 2 && (b0 & 0xE0) == 0xC0) {
+    return ((b0 & 0x1F) << 6) | (static_cast<uint8_t>(s[1]) & 0x3F);
+  }
+  if (maxLen >= 3 && (b0 & 0xF0) == 0xE0) {
+    return ((b0 & 0x0F) << 12) | ((static_cast<uint8_t>(s[1]) & 0x3F) << 6) | (static_cast<uint8_t>(s[2]) & 0x3F);
+  }
+  if (maxLen >= 4 && (b0 & 0xF8) == 0xF0) {
+    return ((b0 & 0x07) << 18) | ((static_cast<uint8_t>(s[1]) & 0x3F) << 12) |
+           ((static_cast<uint8_t>(s[2]) & 0x3F) << 6) | (static_cast<uint8_t>(s[3]) & 0x3F);
+  }
+  return b0;
+}
+
+// Get UTF-8 byte length for a lead byte.
+int utf8ByteLength(unsigned char leadByte) {
+  if ((leadByte & 0x80) == 0) return 1;
+  if ((leadByte & 0xE0) == 0xC0) return 2;
+  if ((leadByte & 0xF0) == 0xE0) return 3;
+  if ((leadByte & 0xF8) == 0xF0) return 4;
+  return 1;
+}
+
+// Check if a Unicode codepoint is an invisible/zero-width character that should be skipped.
+bool isInvisibleCodepoint(uint32_t cp) {
+  if (cp == 0xFEFF) return true;                  // BOM / Zero Width No-Break Space
+  if (cp == 0x200B) return true;                  // Zero Width Space
+  if (cp == 0x200C || cp == 0x200D) return true;  // ZWNJ / ZWJ
+  if (cp == 0x200E || cp == 0x200F) return true;  // LRM / RLM
+  if (cp == 0x2060) return true;                  // Word Joiner
+  if (cp == 0x00AD) return true;                  // Soft Hyphen
+  if (cp == 0x034F) return true;                  // Combining Grapheme Joiner
+  if (cp == 0x061C) return true;                  // Arabic Letter Mark
+  if (cp >= 0x2066 && cp <= 0x2069) return true;  // Directional isolates
+  if (cp >= 0x202A && cp <= 0x202F) return true;  // Directional formatting
+  return false;
+}
+
+// Check if a Unicode codepoint is CJK (Chinese/Japanese/Korean) and should be split into its own word.
+bool isCjkCodepointForSplit(uint32_t cp) {
+  if (cp >= 0x4E00 && cp <= 0x9FFF) return true;    // CJK Unified Ideographs
+  if (cp >= 0x3400 && cp <= 0x4DBF) return true;    // CJK Extension A
+  if (cp >= 0x3000 && cp <= 0x303F) return true;    // CJK Punctuation
+  if (cp >= 0x3040 && cp <= 0x309F) return true;    // Hiragana
+  if (cp >= 0x30A0 && cp <= 0x30FF) return true;    // Katakana
+  if (cp >= 0xF900 && cp <= 0xFAFF) return true;    // CJK Compatibility
+  if (cp >= 0xFF00 && cp <= 0xFFEF) return true;    // Fullwidth forms
+  return false;
+}
+
 constexpr const char* HEADER_TAGS[] = {"h1", "h2", "h3", "h4", "h5", "h6"};
 constexpr const char* BLOCK_TAGS[] = {"p", "li", "div", "br", "blockquote"};
 constexpr const char* BOLD_TAGS[] = {"b", "strong"};
@@ -1100,54 +1158,70 @@ void XMLCALL ChapterHtmlSlimParser::characterData(void* userData, const XML_Char
       continue;
     }
 
-    // Skip Zero Width No-Break Space / BOM (U+FEFF) = 0xEF 0xBB 0xBF
-    const XML_Char FEFF_BYTE_1 = static_cast<XML_Char>(0xEF);
-    const XML_Char FEFF_BYTE_2 = static_cast<XML_Char>(0xBB);
-    const XML_Char FEFF_BYTE_3 = static_cast<XML_Char>(0xBF);
-
-    if (s[i] == FEFF_BYTE_1) {
-      // Check if the next two bytes complete the 3-byte sequence
-      if ((i + 2 < len) && (s[i + 1] == FEFF_BYTE_2) && (s[i + 2] == FEFF_BYTE_3)) {
-        // Sequence 0xEF 0xBB 0xBF found!
-        i += 2;    // Skip the next two bytes
-        continue;  // Move to the next iteration
+    // Determine UTF-8 character length and decode the codepoint.
+    const int charLen = utf8ByteLength(static_cast<uint8_t>(s[i]));
+    if (i + charLen > len) {
+      if (self->partWordBufferIndex < MAX_WORD_SIZE) {
+        self->partWordBuffer[self->partWordBufferIndex++] = s[i];
       }
+      i++;
+      continue;
+    }
+    const uint32_t cp = decodeUtf8Codepoint(&s[i], charLen);
+
+    // Skip invisible/zero-width Unicode characters.
+    if (isInvisibleCodepoint(cp)) {
+      i += charLen;
+      continue;
     }
 
-    // If we're about to run out of space, then cut the word off and start a new one.
-    // For CJK text (no spaces), this is the primary word-breaking mechanism.
-    // We must avoid splitting multi-byte UTF-8 sequences across word boundaries,
-    // otherwise the trailing bytes become orphaned continuation bytes that the
-    // decoder can't interpret.
-    if (self->partWordBufferIndex >= MAX_WORD_SIZE) {
-      int safeLen = utf8SafeTruncateBuffer(self->partWordBuffer, self->partWordBufferIndex);
-
-      if (safeLen < self->partWordBufferIndex && safeLen > 0) {
-        // Incomplete UTF-8 sequence at the end — save it before flushing
-        int overflow = self->partWordBufferIndex - safeLen;
-        char saved[4];
-        for (int j = 0; j < overflow; j++) {
-          saved[j] = self->partWordBuffer[safeLen + j];
-        }
-        self->partWordBufferIndex = safeLen;
+    // Treat ideographic space (U+3000) as whitespace — flush buffer and skip.
+    if (cp == 0x3000) {
+      if (self->partWordBufferIndex > 0) {
         self->flushPartWordBuffer();
-        for (int j = 0; j < overflow; j++) {
-          self->partWordBuffer[j] = saved[j];
-        }
-        self->partWordBufferIndex = overflow;
+      }
+      self->nextWordContinues = false;
+      i += charLen;
+      continue;
+    }
+
+    // CJK characters: flush any buffered content and emit as individual words.
+    if (isCjkCodepointForSplit(cp)) {
+      if (self->partWordBufferIndex > 0) {
+        self->flushPartWordBuffer();
+      }
+      char cjkWord[5] = {};
+      for (int j = 0; j < charLen && j < 4; j++) {
+        cjkWord[j] = s[i + j];
+      }
+      if (self->verticalMode) {
+        self->currentTextBlock->addWord(cjkWord, EpdFontFamily::REGULAR,
+                                        VerticalTextUtils::VerticalBehavior::Upright);
       } else {
-        self->flushPartWordBuffer();
+        self->currentTextBlock->addWord(cjkWord, EpdFontFamily::REGULAR);
       }
+      i += charLen;
+      continue;
     }
 
-    self->partWordBuffer[self->partWordBufferIndex++] = s[i];
+    // Non-CJK, non-invisible character: buffer it.
+    if (self->partWordBufferIndex + charLen >= MAX_WORD_SIZE) {
+      self->flushPartWordBuffer();
+    }
+    for (int j = 0; j < charLen; j++) {
+      self->partWordBuffer[self->partWordBufferIndex++] = s[i + j];
+    }
+    i += charLen - 1;
   }
 
-  // If we have > 750 words buffered up, perform the layout and consume out all but the last line
-  // There should be enough here to build out 1-2 full pages and doing this will free up a lot of
-  // memory.
-  // Spotted when reading Intermezzo, there are some really long text blocks in there.
-  if (self->currentTextBlock->size() > 750) {
+  // Flush buffered words to free memory. The standard threshold is 750 words, but
+  // when free heap is low we flush earlier to prevent abort() from vector reallocation
+  // failure (operator new cannot return nullptr without std::nothrow, and C++ exceptions
+  // are disabled on ESP32).
+  const size_t wordCount = self->currentTextBlock->size();
+  const bool normalFlush = wordCount > 750;
+  const bool earlyFlush = wordCount > 100 && ESP.getFreeHeap() < MIN_FREE_HEAP_FOR_PARSING * 2;
+  if (normalFlush || earlyFlush) {
     LOG_DBG("EHP", "Text block too long, splitting into multiple pages");
     if (self->verticalMode) {
       const uint16_t effectiveHeight = self->viewportHeight;

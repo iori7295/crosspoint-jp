@@ -18,15 +18,44 @@ struct PunctuationOffset {
 };
 
 static constexpr PunctuationOffset VERTICAL_PUNCTUATION[] = {
-    {0x3001, 3, -3, false},
-    {0x3002, 3, -3, false},
-    {0xFF0C, 3, -3, false},
-    {0xFF0E, 3, -3, false},
-    {0x30FC, 0, 0, true},
-    {0x2014, 0, 0, true},
-    {0x2015, 0, 0, true},
-    {0x2026, 0, 0, true},
-    {0xFF5E, 0, 0, true},
+    // Commas and periods (移す)
+    {0x3001, 3, -3, false},   // 、
+    {0x3002, 3, -3, false},   // 。
+    {0xFF0C, 3, -3, false},   // ，
+    {0xFF0E, 3, -3, false},   // ．
+    // Middle dot
+    {0x30FB, 0, 0, false},    // ・
+    {0xFF65, 0, 0, false},    // ･
+    // Colon, semicolon, exclamation, question
+    {0xFF1A, 2, -2, false},   // ：
+    {0xFF1B, 2, -2, false},   // ；
+    {0xFF01, 2, -2, false},   // ！
+    {0xFF1F, 2, -2, false},   // ？
+    // Opening brackets (上げ)
+    {0x300C, -3, -2, false},  // 「
+    {0x300E, -3, -2, false},  // 『
+    {0x3008, -3, -2, false},  // 〈
+    {0x300A, -3, -2, false},  // 《
+    {0xFF08, -3, -2, false},  // （
+    {0xFF3B, -3, -2, false},  // ［
+    {0x3014, -3, -2, false},  // 〔
+    {0x3010, -3, -2, false},  // 【
+    // Closing brackets (下げ)
+    {0x300D, 3, -2, false},   // 」
+    {0x300F, 3, -2, false},   // 』
+    {0x3009, 3, -2, false},   // 〉
+    {0x300B, 3, -2, false},   // 》
+    {0xFF09, 3, -2, false},   // ）
+    {0xFF3D, 3, -2, false},   // ］
+    {0x3015, 3, -2, false},   // 〕
+    {0x3011, 3, -2, false},   // 】
+    // Long marks and dashes (回転)
+    {0x30FC, 0, 0, true},     // ー
+    {0x2014, 0, 0, true},     // —
+    {0x2015, 0, 0, true},     // ―
+    {0x2026, 0, 0, true},     // …
+    {0xFF5E, 0, 0, true},     // ～
+    {0x301C, 0, 0, true},     // 〜 (wave dash)
 };
 static constexpr int VERTICAL_PUNCTUATION_COUNT =
     sizeof(VERTICAL_PUNCTUATION) / sizeof(VERTICAL_PUNCTUATION[0]);
@@ -56,17 +85,22 @@ inline bool isUprightInVertical(uint32_t cp) {
 
 /// Characters that cannot appear at the start of a line in Japanese typesetting.
 inline bool isKinsokuHead(uint32_t cp) {
-  // Closing brackets, punctuation, small kana, etc.
+  // Closing brackets, punctuation, small kana, long vowel mark, etc.
   return cp == 0x3001 || cp == 0x3002 ||  // 、。
          cp == 0xFF0C || cp == 0xFF0E ||  // ，
-         cp == 0x300D || cp == 0x300F ||  // 』】
-         cp == 0x3015 || cp == 0x3041 ||  // 〕ぁ
-         cp == 0x3043 || cp == 0x3045 ||  // ぃぅ
-         cp == 0x3047 || cp == 0x3049 ||  // ぇぉ
+         cp == 0x300D || cp == 0x300F ||  // 」』
+         cp == 0x3009 || cp == 0x300B ||  // 〉》
+         cp == 0x3015 || cp == 0x3011 ||  // 〕】
+         cp == 0xFF09 || cp == 0xFF3D ||  // ）］
+         cp == 0x301D ||                  // 〝
+         cp == 0x30FC ||                  // ー (chōonpu, long vowel mark)
+         cp == 0x3041 || cp == 0x3043 ||  // ぁぃ
+         cp == 0x3045 || cp == 0x3047 ||  // ぅぇ
+         cp == 0x3049 ||                  // ぉ
          cp == 0x3063 ||                  // っ
          cp == 0x3083 || cp == 0x3085 ||  // ゃゅ
          cp == 0x3087 || cp == 0x308E ||  // ょゎ
-         cp == 0x30A1 || cp == 0x30A3 ||  // ァァ
+         cp == 0x30A1 || cp == 0x30A3 ||  // ァィ
          cp == 0x30A5 || cp == 0x30A7 ||  // ゥェ
          cp == 0x30A9 ||                  // ォ
          cp == 0x30C3 ||                  // ッ
@@ -79,8 +113,9 @@ inline bool isKinsokuHead(uint32_t cp) {
 inline bool isKinsokuTail(uint32_t cp) {
   // Opening brackets that should not end a line
   return cp == 0x300C || cp == 0x300E ||  // 「『
-         cp == 0x3014 ||                  // 〔
-         cp == 0x3008 || cp == 0x300A;    // 〈《
+         cp == 0x3008 || cp == 0x300A ||  // 〈《
+         cp == 0x3014 || cp == 0x3010 ||  // 〔【
+         cp == 0xFF08 || cp == 0xFF3B;    // （［
 }
 
 }  // namespace VerticalTextUtils
