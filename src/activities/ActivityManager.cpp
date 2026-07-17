@@ -21,7 +21,7 @@
 
 void ActivityManager::begin() {
   xTaskCreate(&renderTaskTrampoline, "ActivityManagerRender",
-              8192,              // Stack size
+              16384,             // Stack size (was 8192 — overflowed with deep Expat→layout→buildAdvanceTableRange chain for vertical CJK)
               this,              // Parameters
               1,                 // Priority
               &renderTaskHandle  // Task handle
@@ -43,6 +43,10 @@ void ActivityManager::renderTaskLoop() {
     if (currentActivity) {
       HalPowerManager::Lock powerLock;  // Ensure we don't go into low-power mode while rendering
       currentActivity->render(std::move(lock));
+      // Log remaining stack for tuning — 横書き/縦書きの実消費を計測
+      UBaseType_t hw = uxTaskGetStackHighWaterMark(nullptr);
+      LOG_DBG("ACT", "Render stack high-water mark: %u words (%u bytes free)",
+              hw, hw * sizeof(StackType_t));
     }
     // Notify any task blocked in requestUpdateAndWait() that the render is done.
     TaskHandle_t waiter = nullptr;
