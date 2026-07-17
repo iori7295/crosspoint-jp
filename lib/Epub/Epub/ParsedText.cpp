@@ -260,12 +260,6 @@ void ParsedText::addWord(std::string word, const EpdFontFamily::Style fontStyle,
                          const bool attachToPrevious) {
   if (word.empty()) return;
 
-  // The device fonts carry no combining-mark positioning, so EPUB text stored in NFD
-  // (a base letter followed by separate combining accents -- common for Vietnamese,
-  // and used for many EPUB <h1> chapter headings) renders with the marks detached or
-  // misplaced. Compose to NFC here, the single funnel every word passes through, so a
-  // precomposed glyph is used instead. This runs once per word at layout time (the
-  // result is cached in the section file) and is a cheap no-op for mark-free text.
   word = utf8ComposeNfc(word);
 
   EpdFontFamily::Style baseStyle = fontStyle;
@@ -274,6 +268,19 @@ void ParsedText::addWord(std::string word, const EpdFontFamily::Style fontStyle,
   }
   const bool wordStartsRtl = !hasRtlWord && mayContainRtlBytes(word.c_str()) &&
                              BidiUtils::startsWithRtl(word.c_str(), RTL_PER_WORD_PROBE_DEPTH);
+
+  // Pre-compute CJK break offsets so we can reserve vector capacity before
+  // pushing tokens. Without this, std::vector::push_back uses plain operator
+  // new (the throwing variant) when the vector outgrows its capacity, and the
+  // resulting std::bad_alloc terminates via std::terminate under -fno-exceptions
+  // on the memory-constrained ESP32-C3 (~380KB RAM).
+  auto breakOffsets = cjkCharacterBreakByteOffsets(word);
+  const size_t estimatedTokens = breakOffsets.empty() ? 1 : breakOffsets.size() + 1;
+  words.reserve(words.size() + estimatedTokens);
+  wordStyles.reserve(wordStyles.size() + estimatedTokens);
+  wordContinues.reserve(wordContinues.size() + estimatedTokens);
+  wordNoSpaceBefore.reserve(wordNoSpaceBefore.size() + estimatedTokens);
+  wordIsFocusSuffix.reserve(wordIsFocusSuffix.size() + estimatedTokens);
 
   const auto pushToken = [&](std::string token, const bool continues, const bool noSpaceBefore,
                              const bool isFocusSuffix) {
@@ -292,7 +299,7 @@ void ParsedText::addWord(std::string word, const EpdFontFamily::Style fontStyle,
     effectiveNoSpaceBefore = true;
   }
 
-  if (auto breakOffsets = cjkCharacterBreakByteOffsets(word); !breakOffsets.empty()) {
+  if (!breakOffsets.empty()) {
     bool firstToken = true;
     size_t tokenStart = 0;
     for (const size_t breakOffset : breakOffsets) {
