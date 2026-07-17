@@ -226,6 +226,10 @@ class GfxRenderer {
                            EpdFontFamily::Style style = EpdFontFamily::REGULAR) const;
   void drawTextVertical(int fontId, int x, int y, const char* text, bool black = true,
                         EpdFontFamily::Style style = EpdFontFamily::REGULAR) const;
+  // Draw text rotated 90° CW, progressing top-to-bottom (for Sideways words in vertical text).
+  // columnWidth: the CJK column width to center the rotated text within (0 = no centering).
+  void drawTextSideways(int fontId, int x, int y, const char* text, bool black = true,
+                        EpdFontFamily::Style style = EpdFontFamily::REGULAR, int columnWidth = 0) const;
   int getTextHeight(int fontId) const;
 
   // Grayscale functions

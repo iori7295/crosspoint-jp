@@ -13,6 +13,10 @@ namespace {
 // v29: ruby text data added to TextBlock serialization.
 // v31: added charSpacing for direction-specific cache validation.
 constexpr uint8_t SECTION_FILE_VERSION = 32;
+// Minimum free heap required to attempt section building. If below this threshold,
+// the section build would likely OOM mid-way, leaving a corrupt cache file that
+// causes crashes on subsequent boot. Better to abort early and show an error.
+constexpr size_t MIN_FREE_HEAP_FOR_SECTION_BUILD = 50 * 1024;  // 50KB
 constexpr uint32_t HEADER_SIZE = sizeof(uint8_t) + sizeof(int) + sizeof(float) + sizeof(bool) + sizeof(uint8_t) +
                                  sizeof(uint16_t) + sizeof(uint16_t) + sizeof(uint16_t) + sizeof(bool) + sizeof(bool) +
                                  sizeof(uint8_t) + sizeof(bool) + sizeof(bool) + sizeof(uint8_t) +  // charSpacing
@@ -165,7 +169,16 @@ bool Section::createSectionFile(const int fontId, const float lineCompression, c
                                  const uint16_t viewportHeight, const bool hyphenationEnabled, const bool embeddedStyle,
                                  const uint8_t imageRendering, const bool focusReadingEnabled,
                                  const bool firstLineIndent, const std::function<void()>& popupFn,
-                                 const bool verticalMode, const int* headingFontIds, const uint8_t charSpacing) {
+                                  const bool verticalMode, const int* headingFontIds, const uint8_t charSpacing) {
+  // Pre-check free heap: building a section is memory-intensive. Bail early if
+  // heap is too low to prevent OOM mid-build (which leaves a corrupt cache file
+  // that triggers infinite crash→rebuild→crash cycles on subsequent boots).
+  if (ESP.getFreeHeap() < MIN_FREE_HEAP_FOR_SECTION_BUILD) {
+    LOG_ERR("SCT", "Insufficient heap (%u bytes) to build section, need %u",
+            ESP.getFreeHeap(), MIN_FREE_HEAP_FOR_SECTION_BUILD);
+    return false;
+  }
+
   const auto localPath = epub->getSpineItem(spineIndex).href;
   const auto tmpHtmlPath = epub->getCachePath() + "/.tmp_" + std::to_string(spineIndex) + ".html";
 

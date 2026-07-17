@@ -1788,6 +1788,35 @@ void GfxRenderer::drawTextVertical(const int fontId, const int x, const int y, c
   }
 }
 
+void GfxRenderer::drawTextSideways(const int fontId, const int x, const int y, const char* text, const bool black,
+                                   const EpdFontFamily::Style style, const int columnWidth) const {
+  if (text == nullptr || *text == '\0') return;
+  if (fontCacheManager_ && fontCacheManager_->isScanning()) {
+    fontCacheManager_->recordText(text, fontId, style);
+    return;
+  }
+  const auto fontIt = fontMap.find(fontId);
+  if (fontIt == fontMap.end()) return;
+  const auto& font = fontIt->second;
+
+  const int lineHeight = getLineHeight(fontId);
+  // For Sideways text, each character is rendered rotated 90° CW and placed
+  // vertically top-to-bottom. Center within the column width if provided.
+  int xOffset = (columnWidth > lineHeight) ? (columnWidth - lineHeight) / 2 : 0;
+  int yPos = y;
+  const unsigned char* readPtr = reinterpret_cast<const unsigned char*>(text);
+  while (*readPtr) {
+    const unsigned char* charStart = readPtr;
+    uint32_t cp = utf8NextCodepoint(&readPtr);
+    if (cp == 0) break;
+    size_t charLen = static_cast<size_t>(readPtr - charStart);
+    char charBuf[5] = {};
+    memcpy(charBuf, charStart, std::min(charLen, sizeof(charBuf) - 1));
+    drawTextRotated90CW(fontId, x + xOffset, yPos, charBuf, black, style);
+    yPos += lineHeight;
+  }
+}
+
 uint8_t* GfxRenderer::getFrameBuffer() const { return frameBuffer; }
 
 size_t GfxRenderer::getBufferSize() const { return frameBufferSize; }
