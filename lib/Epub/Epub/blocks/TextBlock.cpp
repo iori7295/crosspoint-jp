@@ -210,7 +210,9 @@ std::unique_ptr<TextBlock> TextBlock::deserialize(HalFile& file) {
   std::vector<std::string> rubyTexts(wc);
   for (auto& rt : rubyTexts) serialization::readString(file, rt);
 
-  return std::unique_ptr<TextBlock>(new TextBlock(std::move(words), std::move(wordXpos), std::move(wordStyles),
-                                                  std::move(wordFocusBoundary), std::move(wordFocusSuffixX),
-                                                  blockStyle, std::move(wordYpos), vertical, std::move(rubyTexts)));
+  auto tb = new (std::nothrow) TextBlock(std::move(words), std::move(wordXpos), std::move(wordStyles),
+                                          std::move(wordFocusBoundary), std::move(wordFocusSuffixX),
+                                          blockStyle, std::move(wordYpos), vertical, std::move(rubyTexts));
+  if (!tb) return nullptr;
+  return std::unique_ptr<TextBlock>(tb);
 }
