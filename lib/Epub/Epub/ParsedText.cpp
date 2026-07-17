@@ -13,6 +13,12 @@
 #include "hyphenation/Hyphenator.h"
 
 constexpr int MAX_COST = std::numeric_limits<int>::max();
+// When a paragraph exceeds this many tokens, skip the O(n²) DP line-breaking
+// algorithm and use the linear greedy fallback instead. Japanese paragraphs
+// can produce thousands of tokens (no word separators), causing the DP's
+// parallel vectors (dp, ans, words, wordStyles, …) to exhaust heap on
+// memory-constrained devices like the ESP32-C3 (~380KB RAM).
+constexpr size_t MAX_DP_TOKENS = 250;
 
 namespace {
 
@@ -531,11 +537,13 @@ void ParsedText::layoutAndExtractLines(const GfxRenderer& renderer, const int fo
 
   std::vector<size_t> lineBreakIndices;
   if (hyphenationEnabled) {
-    // Use greedy layout that can split words mid-loop when a hyphenated prefix fits.
     lineBreakIndices =
         computeHyphenatedLineBreaks(renderer, fontId, pageWidth, wordWidths, wordContinues, wordNoSpaceBefore);
-  } else {
+  } else if (words.size() <= MAX_DP_TOKENS) {
     lineBreakIndices = computeLineBreaks(renderer, fontId, pageWidth, wordWidths, wordContinues, wordNoSpaceBefore);
+  } else {
+    lineBreakIndices =
+        computeHyphenatedLineBreaks(renderer, fontId, pageWidth, wordWidths, wordContinues, wordNoSpaceBefore);
   }
   const size_t lineCount = includeLastLine ? lineBreakIndices.size() : lineBreakIndices.size() - 1;
 
