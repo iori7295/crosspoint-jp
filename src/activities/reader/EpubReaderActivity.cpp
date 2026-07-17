@@ -875,8 +875,12 @@ void EpubReaderActivity::render(RenderLock&& lock) {
       LOG_DBG("ERS", "Cache not found, building...");
 
       GUI.drawPopup(renderer, tr(STR_INDEXING));
+      renderer.displayBuffer();
 
-      const auto popupFn = [this]() { GUI.drawPopup(renderer, tr(STR_INDEXING)); };
+      const auto popupFn = [this]() {
+        GUI.drawPopup(renderer, tr(STR_INDEXING));
+        renderer.displayBuffer();
+      };
 
       const int headingFontIds[6] = {SETTINGS.getHeadingFontId(1, verticalMode), SETTINGS.getHeadingFontId(2, verticalMode), 0, 0, 0, 0};
 
