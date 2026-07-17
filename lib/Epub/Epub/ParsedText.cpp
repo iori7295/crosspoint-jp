@@ -18,7 +18,7 @@ constexpr int MAX_COST = std::numeric_limits<int>::max();
 // can produce thousands of tokens (no word separators), causing the DP's
 // parallel vectors (dp, ans, words, wordStyles, …) to exhaust heap on
 // memory-constrained devices like the ESP32-C3 (~380KB RAM).
-constexpr size_t MAX_DP_TOKENS = 250;
+constexpr size_t MAX_DP_TOKENS = 750;
 
 namespace {
 
@@ -268,6 +268,18 @@ void ParsedText::addWord(std::string word, const EpdFontFamily::Style fontStyle,
   }
   const bool wordStartsRtl = !hasRtlWord && mayContainRtlBytes(word.c_str()) &&
                              BidiUtils::startsWithRtl(word.c_str(), RTL_PER_WORD_PROBE_DEPTH);
+
+  // Pre-allocate to match the 750-word flush threshold in characterData().
+  // Without reserve(), std::vector doubles capacity on each reallocation,
+  // requiring both old and new arrays in memory simultaneously. On a fragmented
+  // 380KB heap this contiguous allocation can fail and call abort().
+  if (words.capacity() == 0) {
+    words.reserve(800);
+    wordStyles.reserve(800);
+    wordContinues.reserve(800);
+    wordNoSpaceBefore.reserve(800);
+    wordIsFocusSuffix.reserve(800);
+  }
 
   // Pre-compute CJK break offsets so we can reserve vector capacity before
   // pushing tokens. Without this, std::vector::push_back uses plain operator
