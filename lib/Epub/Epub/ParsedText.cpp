@@ -584,9 +584,12 @@ void ParsedText::layoutVerticalColumns(
   if (words.empty()) return;
 
   if (renderer.isSdCardFont(fontId)) {
-    std::string allText;
-    for (const auto& w : words) { allText += w; allText += ' '; }
-    renderer.ensureSdCardFontReady(fontId, allText.c_str());
+    uint8_t styleMask = 0;
+    for (auto s : wordStyles) {
+      styleMask |= static_cast<uint8_t>(1u << (static_cast<uint8_t>(s) & 0x03));
+    }
+    if (styleMask == 0) styleMask = 0x01;
+    renderer.ensureSdCardFontReady(fontId, words, false, styleMask);
   }
 
   const int lineHeight = renderer.getLineHeight(fontId);
