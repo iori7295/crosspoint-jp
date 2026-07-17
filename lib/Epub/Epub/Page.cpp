@@ -148,6 +148,15 @@ std::unique_ptr<Page> Page::deserialize(HalFile& file) {
 
   uint16_t count;
   serialization::readPod(file, count);
+  // Sanity check: prevent heap corruption when reading a partially-written /
+  // corrupt section cache file left over from a previous crash. Without this,
+  // garbage element-count values (e.g. 0xFFFF) would cause O(n) loop +
+  // enormous allocations that corrupt heap and eventually abort in the
+  // FreeRTOS tick hook.
+  if (count > 1000) {
+    LOG_ERR("PGE", "Deserialization failed: element count %u exceeds max", count);
+    return nullptr;
+  }
 
   for (uint16_t i = 0; i < count; i++) {
     uint8_t tag;
