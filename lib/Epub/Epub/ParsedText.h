@@ -65,8 +65,9 @@ class ParsedText {
   void addWord(std::string word, EpdFontFamily::Style fontStyle, bool underline = false, bool attachToPrevious = false);
   void addWord(std::string word, EpdFontFamily::Style fontStyle, VerticalTextUtils::VerticalBehavior vBehavior,
                bool underline = false, bool attachToPrevious = false);
-  void layoutVerticalColumns(const GfxRenderer& renderer, int fontId, uint16_t columnHeight, uint16_t columnWidth,
-                             const std::function<void(std::shared_ptr<TextBlock>)>& processColumn);
+  void layoutVerticalColumns(const GfxRenderer& renderer, int fontId, uint16_t columnHeight,
+                             const std::function<void(std::shared_ptr<TextBlock>)>& processColumn,
+                             bool includeLastColumn = true);
   void setRubyForLastWord(const std::string& ruby);
   void setRubyForWordAt(size_t index, const std::string& ruby);
   void setBlockStyle(const BlockStyle& blockStyle) { this->blockStyle = blockStyle; }

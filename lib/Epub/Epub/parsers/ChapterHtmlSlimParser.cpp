@@ -1151,10 +1151,9 @@ void XMLCALL ChapterHtmlSlimParser::characterData(void* userData, const XML_Char
     LOG_DBG("EHP", "Text block too long, splitting into multiple pages");
     if (self->verticalMode) {
       const uint16_t effectiveHeight = self->viewportHeight;
-      const uint16_t columnWidth = self->renderer.getLineHeight(self->fontId);
       self->currentTextBlock->layoutVerticalColumns(
-          self->renderer, self->fontId, effectiveHeight, columnWidth,
-          [self](const std::shared_ptr<TextBlock>& textBlock) { self->addLineToPage(textBlock); });
+          self->renderer, self->fontId, effectiveHeight,
+          [self](const std::shared_ptr<TextBlock>& textBlock) { self->addLineToPage(textBlock); }, false);
     } else {
       const int horizontalInset = self->currentTextBlock->getBlockStyle().totalHorizontalInset();
       const uint16_t effectiveWidth = (horizontalInset < self->viewportWidth)
@@ -1513,7 +1512,7 @@ void ChapterHtmlSlimParser::makePages() {
   if (verticalMode) {
     const uint16_t columnWidth = renderer.getLineHeight(fontId);
     currentTextBlock->layoutVerticalColumns(
-        renderer, fontId, viewportHeight, columnWidth,
+        renderer, fontId, viewportHeight,
         [this](const std::shared_ptr<TextBlock>& textBlock) { addLineToPage(textBlock); });
   } else {
     const int horizontalInset = blockStyle.totalHorizontalInset();

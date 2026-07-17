@@ -73,6 +73,7 @@ class GfxRenderer {
   mutable int _stripY0 = 0;
   mutable int _stripRows = 0;
   mutable bool _stripActive = false;
+  uint8_t verticalCharSpacingPercent_ = 10;
 
   void renderChar(const EpdFontFamily& fontFamily, uint32_t cp, int* x, int* y, bool pixelState,
                   EpdFontFamily::Style style) const;
@@ -208,6 +209,10 @@ class GfxRenderer {
   int getTextAdvanceX(int fontId, const char* text, EpdFontFamily::Style style) const;
   int getFontAscenderSize(int fontId) const;
   int getLineHeight(int fontId) const;
+  /// Vertical character spacing percent (0-30). Applied between upright CJK
+  /// characters in vertical writing mode. Set by the caller before rendering.
+  void setVerticalCharSpacing(uint8_t percent) { verticalCharSpacingPercent_ = percent; }
+  uint8_t getVerticalCharSpacing() const { return verticalCharSpacingPercent_; }
   std::string truncatedText(int fontId, const char* text, int maxWidth,
                             EpdFontFamily::Style style = EpdFontFamily::REGULAR) const;
   /// Word-wrap \p text into at most \p maxLines lines, each no wider than

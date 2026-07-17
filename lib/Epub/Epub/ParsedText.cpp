@@ -577,10 +577,10 @@ void ParsedText::layoutAndExtractLines(const GfxRenderer& renderer, const int fo
     }
   }
 }
-
 void ParsedText::layoutVerticalColumns(
-    const GfxRenderer& renderer, const int fontId, const uint16_t columnHeight, const uint16_t columnWidth,
-    const std::function<void(std::shared_ptr<TextBlock>)>& processColumn) {
+    const GfxRenderer& renderer, const int fontId, const uint16_t columnHeight,
+    const std::function<void(std::shared_ptr<TextBlock>)>& processColumn,
+    const bool includeLastColumn) {
   if (words.empty()) return;
 
   if (renderer.isSdCardFont(fontId)) {
@@ -594,92 +594,138 @@ void ParsedText::layoutVerticalColumns(
 
   const int lineHeight = renderer.getLineHeight(fontId);
 
+  // Compute CJK character advance once from the first Upright word.
+  // This is used as the reference cell height for TateChuYoko and spacing.
+  int cjkCharAdvance = 0;
+  for (size_t i = 0; i < words.size() && cjkCharAdvance == 0; i++) {
+    auto vb = (i < wordVerticalBehaviors.size()) ? wordVerticalBehaviors[i]
+                                                  : VerticalTextUtils::VerticalBehavior::Upright;
+    if (vb == VerticalTextUtils::VerticalBehavior::Upright) {
+      cjkCharAdvance = renderer.getTextAdvanceX(fontId, words[i].c_str(), wordStyles[i]);
+    }
+  }
+  if (cjkCharAdvance == 0) cjkCharAdvance = lineHeight;
+
+  // Calculate word heights for vertical layout
   std::vector<uint16_t> wordHeights;
   wordHeights.reserve(words.size());
+  const int sp = renderer.getVerticalCharSpacing();
+  const int cjkSpacing = cjkCharAdvance * sp / 100;
+
   for (size_t i = 0; i < words.size(); i++) {
     auto vb = (i < wordVerticalBehaviors.size()) ? wordVerticalBehaviors[i]
                                                   : VerticalTextUtils::VerticalBehavior::Upright;
+    uint16_t baseHeight;
     switch (vb) {
       case VerticalTextUtils::VerticalBehavior::Sideways:
-        wordHeights.push_back(renderer.getTextWidth(fontId, words[i].c_str(), wordStyles[i]));
+        baseHeight = renderer.getTextAdvanceX(fontId, words[i].c_str(), wordStyles[i]);
         break;
       case VerticalTextUtils::VerticalBehavior::TateChuYoko:
-        wordHeights.push_back(lineHeight);
+        baseHeight = static_cast<uint16_t>(cjkCharAdvance);
         break;
       default:
-        wordHeights.push_back(renderer.getTextWidth(fontId, words[i].c_str(), wordStyles[i]));
+        baseHeight = renderer.getTextAdvanceX(fontId, words[i].c_str(), wordStyles[i]);
         break;
     }
-  }
-
-  size_t columnStart = 0;
-  int currentY = 0;
-
-  for (size_t i = 0; i < words.size(); i++) {
-    if (currentY + wordHeights[i] > columnHeight && i > columnStart) {
-      std::vector<std::string> colWords(words.begin() + columnStart, words.begin() + i);
-      std::vector<int16_t> colYpos;
-      std::vector<int16_t> colXpos;
-      std::vector<EpdFontFamily::Style> colStyles(wordStyles.begin() + columnStart, wordStyles.begin() + i);
-      colYpos.reserve(colWords.size());
-      colXpos.resize(colWords.size(), 0);
-
-      int y = 0;
-      for (size_t j = columnStart; j < i; j++) {
-        colYpos.push_back(static_cast<int16_t>(y));
-        y += wordHeights[j];
-      }
-
-      std::vector<std::string> colRubyTexts;
-      if (rubyTexts.size() >= i) {
-        colRubyTexts.reserve(i - columnStart);
-        for (size_t ri = columnStart; ri < i; ++ri) {
-          colRubyTexts.push_back(std::move(rubyTexts[ri]));
-        }
-      }
-      processColumn(std::make_shared<TextBlock>(std::move(colWords), std::move(colXpos), std::move(colStyles),
-                                                 std::vector<uint8_t>{}, std::vector<uint16_t>{}, blockStyle,
-                                                 std::move(colYpos), true, std::move(colRubyTexts)));
-
-      columnStart = i;
-      currentY = 0;
+    if (vb == VerticalTextUtils::VerticalBehavior::Upright) {
+      wordHeights.push_back(baseHeight + baseHeight * sp / 100);
+    } else {
+      wordHeights.push_back(baseHeight + cjkSpacing);
     }
-    currentY += wordHeights[i];
   }
 
-  if (columnStart < words.size()) {
-    std::vector<std::string> colWords(words.begin() + columnStart, words.end());
+  // Compute first-line indent for vertical mode
+  const int firstLineIndentVal = resolveFirstLineIndent(true, renderer, fontId);
+
+  // Helper: get the first codepoint of a word string
+  auto firstCp = [](const std::string& w) -> uint32_t {
+    const auto* p = reinterpret_cast<const unsigned char*>(w.c_str());
+    return utf8NextCodepoint(&p);
+  };
+
+  // First pass: compute column boundaries without emitting.
+  std::vector<size_t> columnEnds;
+  {
+    size_t columnStart = 0;
+    int currentY = firstLineIndentVal;
+    for (size_t i = 0; i < words.size(); i++) {
+      if (currentY + wordHeights[i] > columnHeight && i > columnStart) {
+        size_t breakAt = i;
+        while (breakAt > columnStart + 1 && VerticalTextUtils::isKinsokuHead(firstCp(words[breakAt]))) {
+          breakAt--;
+        }
+        if (breakAt > columnStart + 1 && VerticalTextUtils::isKinsokuTail(firstCp(words[breakAt - 1]))) {
+          breakAt--;
+        }
+        columnEnds.push_back(breakAt);
+        columnStart = breakAt;
+        currentY = 0;
+        for (size_t j = columnStart; j <= i; j++) {
+          currentY += wordHeights[j];
+        }
+        continue;
+      }
+      currentY += wordHeights[i];
+    }
+    if (columnStart < words.size()) {
+      columnEnds.push_back(words.size());
+    }
+  }
+
+  // Determine how many columns to emit.
+  const size_t totalCols = columnEnds.size();
+  const size_t emitCols = (includeLastColumn || totalCols <= 1) ? totalCols : totalCols - 1;
+
+  // Second pass: emit columns up to emitCols.
+  bool isFirstColumn = true;
+  size_t emitStart = 0;
+  for (size_t i = 0; i < emitCols; i++) {
+    const size_t start = emitStart;
+    const size_t end = columnEnds[i];
+    std::vector<std::string> colWords(std::make_move_iterator(words.begin() + start),
+                                      std::make_move_iterator(words.begin() + end));
     std::vector<int16_t> colYpos;
     std::vector<int16_t> colXpos;
-    std::vector<EpdFontFamily::Style> colStyles(wordStyles.begin() + columnStart, wordStyles.end());
-    colYpos.reserve(colWords.size());
-    colXpos.resize(colWords.size(), 0);
+    std::vector<EpdFontFamily::Style> colStyles(wordStyles.begin() + start, wordStyles.begin() + end);
+    const size_t count = end - start;
+    std::vector<std::string> colRubyTexts;
+    if (rubyTexts.size() >= end) {
+      colRubyTexts.assign(rubyTexts.begin() + start, rubyTexts.begin() + end);
+    } else {
+      colRubyTexts.resize(count);
+    }
+    colYpos.reserve(count);
+    colXpos.resize(count, 0);
 
-    int y = 0;
-    for (size_t j = columnStart; j < words.size(); j++) {
+    int y = isFirstColumn ? firstLineIndentVal : 0;
+    for (size_t j = start; j < end; j++) {
       colYpos.push_back(static_cast<int16_t>(y));
       y += wordHeights[j];
     }
 
-    std::vector<std::string> colRubyTexts;
-    if (!rubyTexts.empty() && rubyTexts.size() >= columnStart) {
-      colRubyTexts.reserve(rubyTexts.size() - columnStart);
-      for (size_t ri = columnStart; ri < rubyTexts.size(); ++ri) {
-        colRubyTexts.push_back(std::move(rubyTexts[ri]));
-      }
-    }
     processColumn(std::make_shared<TextBlock>(std::move(colWords), std::move(colXpos), std::move(colStyles),
                                                std::vector<uint8_t>{}, std::vector<uint16_t>{}, blockStyle,
                                                std::move(colYpos), true, std::move(colRubyTexts)));
+    isFirstColumn = false;
+    emitStart = end;
   }
 
-  words.clear();
-  wordStyles.clear();
-  wordContinues.clear();
-  wordNoSpaceBefore.clear();
-  wordIsFocusSuffix.clear();
-  wordVerticalBehaviors.clear();
-  rubyTexts.clear();
+  // Erase consumed words.
+  if (emitStart > 0) {
+    words.erase(words.begin(), words.begin() + emitStart);
+    wordStyles.erase(wordStyles.begin(), wordStyles.begin() + emitStart);
+    wordContinues.erase(wordContinues.begin(), wordContinues.begin() + emitStart);
+    wordNoSpaceBefore.erase(wordNoSpaceBefore.begin(), wordNoSpaceBefore.begin() + emitStart);
+    wordIsFocusSuffix.erase(wordIsFocusSuffix.begin(), wordIsFocusSuffix.begin() + emitStart);
+    if (!rubyTexts.empty()) {
+      const size_t rtConsumed = std::min(emitStart, static_cast<size_t>(rubyTexts.size()));
+      rubyTexts.erase(rubyTexts.begin(), rubyTexts.begin() + rtConsumed);
+    }
+    if (!wordVerticalBehaviors.empty()) {
+      const size_t vbConsumed = std::min(emitStart, static_cast<size_t>(wordVerticalBehaviors.size()));
+      wordVerticalBehaviors.erase(wordVerticalBehaviors.begin(), wordVerticalBehaviors.begin() + vbConsumed);
+    }
+  }
 }
 
 std::vector<uint16_t> ParsedText::calculateWordWidths(const GfxRenderer& renderer, const int fontId) {

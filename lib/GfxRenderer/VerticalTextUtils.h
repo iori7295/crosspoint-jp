@@ -54,4 +54,33 @@ inline bool isUprightInVertical(uint32_t cp) {
   return false;
 }
 
+/// Characters that cannot appear at the start of a line in Japanese typesetting.
+inline bool isKinsokuHead(uint32_t cp) {
+  // Closing brackets, punctuation, small kana, etc.
+  return cp == 0x3001 || cp == 0x3002 ||  // 、。
+         cp == 0xFF0C || cp == 0xFF0E ||  // ，
+         cp == 0x300D || cp == 0x300F ||  // 』】
+         cp == 0x3015 || cp == 0x3041 ||  // 〕ぁ
+         cp == 0x3043 || cp == 0x3045 ||  // ぃぅ
+         cp == 0x3047 || cp == 0x3049 ||  // ぇぉ
+         cp == 0x3063 ||                  // っ
+         cp == 0x3083 || cp == 0x3085 ||  // ゃゅ
+         cp == 0x3087 || cp == 0x308E ||  // ょゎ
+         cp == 0x30A1 || cp == 0x30A3 ||  // ァァ
+         cp == 0x30A5 || cp == 0x30A7 ||  // ゥェ
+         cp == 0x30A9 ||                  // ォ
+         cp == 0x30C3 ||                  // ッ
+         cp == 0x30E3 || cp == 0x30E5 ||  // ャュ
+         cp == 0x30E7 || cp == 0x30EE ||  // ョヮ
+         cp == 0x30F5 || cp == 0x30F6;    // ヵヶ
+}
+
+/// Characters that cannot appear at the end of a line in Japanese typesetting.
+inline bool isKinsokuTail(uint32_t cp) {
+  // Opening brackets that should not end a line
+  return cp == 0x300C || cp == 0x300E ||  // 「『
+         cp == 0x3014 ||                  // 〔
+         cp == 0x3008 || cp == 0x300A;    // 〈《
+}
+
 }  // namespace VerticalTextUtils
