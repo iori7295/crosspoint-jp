@@ -1185,25 +1185,6 @@ void XMLCALL ChapterHtmlSlimParser::characterData(void* userData, const XML_Char
       continue;
     }
 
-    // CJK characters: flush any buffered content and emit as individual words.
-    if (isCjkCodepointForSplit(cp)) {
-      if (self->partWordBufferIndex > 0) {
-        self->flushPartWordBuffer();
-      }
-      char cjkWord[5] = {};
-      for (int j = 0; j < charLen && j < 4; j++) {
-        cjkWord[j] = s[i + j];
-      }
-      if (self->verticalMode) {
-        self->currentTextBlock->addWord(cjkWord, EpdFontFamily::REGULAR,
-                                        VerticalTextUtils::VerticalBehavior::Upright);
-      } else {
-        self->currentTextBlock->addWord(cjkWord, EpdFontFamily::REGULAR);
-      }
-      i += charLen;
-      continue;
-    }
-
     // Non-CJK, non-invisible character: buffer it.
     if (self->partWordBufferIndex + charLen >= MAX_WORD_SIZE) {
       self->flushPartWordBuffer();

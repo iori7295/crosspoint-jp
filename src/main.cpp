@@ -277,15 +277,20 @@ void enterDeepSleep(bool fromTimeout = false) {
 }
 
 void setupUiFontFallback() {
-  // Clear existing fallbacks first
   ui10RegularFont.data->fallback = nullptr;
   ui10BoldFont.data->fallback = nullptr;
   ui12RegularFont.data->fallback = nullptr;
   ui12BoldFont.data->fallback = nullptr;
   smallFont.data->fallback = nullptr;
 
-  // Try to find a CJK-capable SD font for UI fallback.
-  // Prefer horizontal reader font; fall back to vertical.
+  // Also clear fallbacks for all built-in reader fonts
+  const auto& fontMap = renderer.getFontMap();
+  for (const auto& [id, family] : fontMap) {
+    auto* d = family.getData();
+    if (d) d->fallback = nullptr;
+  }
+
+  // Try to find a CJK-capable SD font for fallback.
   auto trySet = [](int fbId) {
     if (fbId == 0 || !renderer.isSdCardFont(fbId)) return false;
     const auto& fbMap = renderer.getFontMap();
@@ -298,6 +303,13 @@ void setupUiFontFallback() {
     ui12RegularFont.data->fallback = fbData;
     ui12BoldFont.data->fallback = fbData;
     smallFont.data->fallback = fbData;
+
+    // Set fallback for all built-in reader fonts so CJK characters
+    // render correctly even when NotoSerif/NotoSans is selected.
+    for (const auto& [id, family] : renderer.getFontMap()) {
+      auto* d = family.getData();
+      if (d && d != fbData) d->fallback = fbData;
+    }
     return true;
   };
 
