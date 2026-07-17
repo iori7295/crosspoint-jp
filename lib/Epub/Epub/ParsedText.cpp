@@ -19,6 +19,11 @@ constexpr int MAX_COST = std::numeric_limits<int>::max();
 // parallel vectors (dp, ans, words, wordStyles, …) to exhaust heap on
 // memory-constrained devices like the ESP32-C3 (~380KB RAM).
 constexpr size_t MAX_DP_TOKENS = 750;
+// When free heap or largest contiguous block drops below this, disable
+// hyphenation to avoid std::vector reallocation failures (plain operator new
+// has no std::nothrow, and -fno-exceptions means terminate on ESP32).
+constexpr size_t MIN_FREE_HEAP_FOR_HYPHENATION = 12 * 1024;     // 12KB total
+constexpr size_t MIN_MAX_ALLOC_FOR_HYPHENATION = 6 * 1024;      // 6KB contiguous
 
 namespace {
 
@@ -555,14 +560,21 @@ void ParsedText::layoutAndExtractLines(const GfxRenderer& renderer, const int fo
   auto wordWidths = calculateWordWidths(renderer, fontId);
 
   std::vector<size_t> lineBreakIndices;
-  if (hyphenationEnabled) {
+  const bool lowHeap =
+      ESP.getFreeHeap() < MIN_FREE_HEAP_FOR_HYPHENATION ||
+      static_cast<size_t>(ESP.getMaxAllocHeap()) < MIN_MAX_ALLOC_FOR_HYPHENATION;
+  if (hyphenationEnabled && !lowHeap && words.size() <= MAX_DP_TOKENS) {
+    // DP + hyphenation — full quality, enough heap
     lineBreakIndices =
         computeHyphenatedLineBreaks(renderer, fontId, pageWidth, wordWidths, wordContinues, wordNoSpaceBefore);
-  } else if (words.size() <= MAX_DP_TOKENS) {
+  } else if (!lowHeap && words.size() <= MAX_DP_TOKENS) {
+    // DP, no hyphenation (or hyphenation disabled)
     lineBreakIndices = computeLineBreaks(renderer, fontId, pageWidth, wordWidths, wordContinues, wordNoSpaceBefore);
   } else {
+    // Low heap OR oversized paragraph: greedy only, no hyphenation, no DP
     lineBreakIndices =
-        computeHyphenatedLineBreaks(renderer, fontId, pageWidth, wordWidths, wordContinues, wordNoSpaceBefore);
+        computeHyphenatedLineBreaks(renderer, fontId, pageWidth, wordWidths, wordContinues, wordNoSpaceBefore,
+                                    /*allowHyphenation=*/false);
   }
   const size_t lineCount = includeLastLine ? lineBreakIndices.size() : lineBreakIndices.size() - 1;
 
@@ -868,9 +880,10 @@ std::vector<size_t> ParsedText::computeLineBreaks(const GfxRenderer& renderer, c
 
 // Builds break indices while opportunistically splitting the word that would overflow the current line.
 std::vector<size_t> ParsedText::computeHyphenatedLineBreaks(const GfxRenderer& renderer, const int fontId,
-                                                            const int pageWidth, std::vector<uint16_t>& wordWidths,
-                                                            std::vector<bool>& continuesVec,
-                                                            std::vector<bool>& noSpaceBeforeVec) {
+                                                             const int pageWidth, std::vector<uint16_t>& wordWidths,
+                                                             std::vector<bool>& continuesVec,
+                                                             std::vector<bool>& noSpaceBeforeVec,
+                                                             const bool allowHyphenation) {
   const int firstLineIndent = resolveFirstLineIndent(true, renderer, fontId);
 
   std::vector<size_t> lineBreakIndices;
@@ -911,7 +924,7 @@ std::vector<size_t> ParsedText::computeHyphenatedLineBreaks(const GfxRenderer& r
       const int availableWidth = effectivePageWidth - lineWidth - spacing;
       const bool allowFallbackBreaks = isFirstWord;  // Only for first word on line
 
-      if (availableWidth > 0 &&
+      if (allowHyphenation && availableWidth > 0 &&
           hyphenateWordAtIndex(currentIndex, availableWidth, renderer, fontId, wordWidths, allowFallbackBreaks)) {
         // Prefix now fits; append it to this line and move to next line
         lineWidth += spacing + wordWidths[currentIndex];
