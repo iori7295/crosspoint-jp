@@ -1206,7 +1206,7 @@ int SdCardFont::buildAdvanceTableRange(Iter begin, Iter end, bool includeSpace, 
   // fixed stack buffer, flush to the advance table via fetchAdvancesForCodepoints,
   // reset, and continue.  This eliminates the large heap allocation (previously
   // up to 4KB) that failed under heap fragmentation on the 380 KB C3.
-  static constexpr uint32_t CHUNK_SIZE = 256;
+  static constexpr uint32_t CHUNK_SIZE = 128;
   // +2 reserved slots for space and hyphen injected after the main scan.
   uint32_t codepoints[CHUNK_SIZE + 2];
   uint32_t cpCount = 0;
