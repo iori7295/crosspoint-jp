@@ -681,11 +681,19 @@ void ParsedText::layoutVerticalColumns(
   };
 
   // First pass: compute column boundaries without emitting.
+  // NOTE: must use a `while` loop with explicit `i = breakAt` because the
+  // kinsoku backtracking changes the column-break position.  The old `for`
+  // + `continue` caused an infinite loop: when kinsoku pulled breakAt back
+  // past columnStart, currentY stayed large for the same i on every
+  // iteration → same overflow → same push_back → columnEnds grew until
+  // bad_alloc.  Setting i = breakAt directly after the boundary guarantees
+  // forward progress.
   std::vector<size_t> columnEnds;
   {
     size_t columnStart = 0;
     int currentY = firstLineIndentVal;
-    for (size_t i = 0; i < words.size(); i++) {
+    size_t i = 0;
+    while (i < words.size()) {
       if (currentY + wordHeights[i] > columnHeight && i > columnStart) {
         size_t breakAt = i;
         if (!lowHeap) {
@@ -702,9 +710,11 @@ void ParsedText::layoutVerticalColumns(
         for (size_t j = columnStart; j <= i; j++) {
           currentY += wordHeights[j];
         }
+        i = breakAt;
         continue;
       }
       currentY += wordHeights[i];
+      i++;
     }
     if (columnStart < words.size()) {
       columnEnds.push_back(words.size());
