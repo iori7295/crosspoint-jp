@@ -519,7 +519,7 @@ int ParsedText::resolveFirstLineIndent(const bool isFirstLine, const GfxRenderer
 // Consumes data to minimize memory usage
 void ParsedText::layoutAndExtractLines(const GfxRenderer& renderer, const int fontId, const uint16_t viewportWidth,
                                        const std::function<void(std::shared_ptr<TextBlock>)>& processLine,
-                                       const bool includeLastLine) {
+                                       const bool includeLastLine, const bool isVertical) {
   if (words.empty()) {
     return;
   }
@@ -565,15 +565,19 @@ void ParsedText::layoutAndExtractLines(const GfxRenderer& renderer, const int fo
   const bool lowHeap =
       ESP.getFreeHeap() < MIN_FREE_HEAP_FOR_HYPHENATION ||
       static_cast<size_t>(ESP.getMaxAllocHeap()) < MIN_MAX_ALLOC_FOR_HYPHENATION;
-  if (hyphenationEnabled && !lowHeap && words.size() <= MAX_DP_TOKENS) {
+  // Vertical text and CJK paragraphs skip DP entirely: the O(n²) cost plus
+  // parallel dp/ans vectors (~16KB) routinely fragment the heap.  Use the
+  // lightweight greedy algorithm which is linear in word count and has no
+  // auxiliary allocations beyond the result vector.
+  if (!isVertical && hyphenationEnabled && !lowHeap && words.size() <= MAX_DP_TOKENS) {
     // DP + hyphenation — full quality, enough heap
     lineBreakIndices =
         computeHyphenatedLineBreaks(renderer, fontId, pageWidth, wordWidths, wordContinues, wordNoSpaceBefore);
-  } else if (!lowHeap && words.size() <= MAX_DP_TOKENS) {
+  } else if (!isVertical && !lowHeap && words.size() <= MAX_DP_TOKENS) {
     // DP, no hyphenation (or hyphenation disabled)
     lineBreakIndices = computeLineBreaks(renderer, fontId, pageWidth, wordWidths, wordContinues, wordNoSpaceBefore);
   } else {
-    // Low heap OR oversized paragraph: greedy only, no hyphenation, no DP
+    // Vertical mode, low heap, or oversized paragraph: greedy only
     lineBreakIndices =
         computeHyphenatedLineBreaks(renderer, fontId, pageWidth, wordWidths, wordContinues, wordNoSpaceBefore,
                                     /*allowHyphenation=*/false);

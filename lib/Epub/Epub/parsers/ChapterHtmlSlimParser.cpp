@@ -1195,14 +1195,11 @@ void XMLCALL ChapterHtmlSlimParser::characterData(void* userData, const XML_Char
     i += charLen - 1;
   }
 
-  // Flush buffered words to free memory. The standard threshold is 750 words, but
-  // when free heap is low we flush earlier to prevent abort() from vector reallocation
-  // failure (operator new cannot return nullptr without std::nothrow, and C++ exceptions
-  // are disabled on ESP32).
+  // Flush buffered words aggressively: CJK text produces ~10x more tokens than
+  // Latin text, so keeping 750 words would create a huge vector peak. Flush at
+  // 100 words (~3-4 lines) to keep working set small and avoid OOM.
   const size_t wordCount = self->currentTextBlock->size();
-  // Lower threshold from 750 to 400 to reduce vector peak size and the
-  // contiguous-allocation spike during reallocation on fragmented heap.
-  const bool normalFlush = wordCount > 400;
+  const bool normalFlush = wordCount > 100;
   const uint32_t freeHeap = ESP.getFreeHeap();
   const uint32_t maxAlloc = ESP.getMaxAllocHeap();
   // Monitor both free heap AND largest contiguous block (fragmentation gauge).
@@ -1221,7 +1218,8 @@ void XMLCALL ChapterHtmlSlimParser::characterData(void* userData, const XML_Char
                                           : self->viewportWidth;
       self->currentTextBlock->layoutAndExtractLines(
           self->renderer, self->fontId, effectiveWidth,
-          [self](const std::shared_ptr<TextBlock>& textBlock) { self->addLineToPage(textBlock); }, false);
+          [self](const std::shared_ptr<TextBlock>& textBlock) { self->addLineToPage(textBlock); }, false,
+          self->verticalMode);
     }
   }
 }
@@ -1599,7 +1597,8 @@ void ChapterHtmlSlimParser::makePages() {
 
     currentTextBlock->layoutAndExtractLines(
         renderer, fontId, effectiveWidth,
-        [this](const std::shared_ptr<TextBlock>& textBlock) { addLineToPage(textBlock); });
+        [this](const std::shared_ptr<TextBlock>& textBlock) { addLineToPage(textBlock); }, true,
+        verticalMode);
   }
 
   // Fallback: transfer any remaining pending footnotes to current page.
