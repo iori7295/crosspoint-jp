@@ -1466,6 +1466,16 @@ bool ChapterHtmlSlimParser::parseAndBuildPages() {
       file.close();
       return false;
     }
+
+    // Heap guard: stop parsing before the next XML_GetBuffer / characterData
+    // allocation hits std::bad_alloc under -fno-exceptions.  Mirrors zrn-ns
+    // L1286; was absent in the v1.4.1 fork.
+    if (!done && ESP.getFreeHeap() < MIN_FREE_HEAP_FOR_PARSING) {
+      LOG_ERR("EHP", "Low heap during parsing (%u bytes), stopping gracefully", ESP.getFreeHeap());
+      destroyXmlParser(parser);
+      file.close();
+      return false;
+    }
   } while (!done);
   LOG_DBG("EHP", "Time to parse and build pages: %lu ms", millis() - chapterStartTime);
 
