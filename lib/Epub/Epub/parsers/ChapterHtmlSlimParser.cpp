@@ -1505,7 +1505,7 @@ void ChapterHtmlSlimParser::addLineToPage(std::shared_ptr<TextBlock> line) {
       currentPageNextX = viewportWidth - columnWidth;
     }
 
-    auto pageLine = std::make_shared<PageLine>(line, currentPageNextX, 0);
+    auto pageLine = std::make_shared<PageLine>(line, currentPageNextX, currentPageNextY);
     currentPage->elements.push_back(std::move(pageLine));
     currentPageNextX -= (columnWidth + columnSpacing);
     return;
@@ -1566,8 +1566,9 @@ void ChapterHtmlSlimParser::makePages() {
 
   if (verticalMode) {
     const uint16_t columnWidth = renderer.getLineHeight(fontId);
+    const uint16_t colH = (currentPageNextY < viewportHeight) ? viewportHeight - currentPageNextY : 1;
     currentTextBlock->layoutVerticalColumns(
-        renderer, fontId, viewportHeight,
+        renderer, fontId, colH,
         [this](const std::shared_ptr<TextBlock>& textBlock) { addLineToPage(textBlock); });
   } else {
     const int horizontalInset = blockStyle.totalHorizontalInset();

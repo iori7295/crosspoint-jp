@@ -14,7 +14,17 @@ void TextBlock::render(const GfxRenderer& renderer, const int fontId, const int 
     for (size_t i = 0; i < words.size(); i++) {
       const int wordX = wordXpos.empty() ? x : wordXpos[i] + x;
       const int wordY = (i < wordYpos.size()) ? y + wordYpos[i] : y;
-      renderer.drawTextVertical(fontId, wordX, wordY, words[i].c_str(), true, wordStyles[i]);
+
+      const auto vb = (i < wordVerticalBehaviors.size())
+                          ? wordVerticalBehaviors[i]
+                          : VerticalTextUtils::VerticalBehavior::Upright;
+
+      if (vb == VerticalTextUtils::VerticalBehavior::Sideways) {
+        renderer.drawTextSideways(fontId, wordX, wordY, words[i].c_str(), true, wordStyles[i]);
+      } else {
+        renderer.drawTextVertical(fontId, wordX, wordY, words[i].c_str(), true, wordStyles[i]);
+      }
+
       if (i < rubyTexts.size() && !rubyTexts[i].empty() && rubyFontId >= 0) {
         const int rubyX = wordX + renderer.getLineHeight(fontId);
         renderer.drawTextVertical(rubyFontId, rubyX, wordY, rubyTexts[i].c_str(), true, EpdFontFamily::REGULAR);

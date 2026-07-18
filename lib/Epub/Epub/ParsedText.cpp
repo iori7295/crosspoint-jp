@@ -737,9 +737,18 @@ void ParsedText::layoutVerticalColumns(
       y += wordHeights[j];
     }
 
+    std::vector<VerticalTextUtils::VerticalBehavior> colBehaviors;
+    colBehaviors.reserve(count);
+    for (size_t j = start; j < end; j++) {
+      colBehaviors.push_back((j < wordVerticalBehaviors.size())
+                                 ? wordVerticalBehaviors[j]
+                                 : VerticalTextUtils::VerticalBehavior::Upright);
+    }
+
     processColumn(std::make_shared<TextBlock>(std::move(colWords), std::move(colXpos), std::move(colStyles),
                                                std::vector<uint8_t>{}, std::vector<uint16_t>{}, blockStyle,
-                                               std::move(colYpos), true, std::move(colRubyTexts)));
+                                               std::move(colYpos), true, std::move(colRubyTexts),
+                                               std::move(colBehaviors)));
     isFirstColumn = false;
     emitStart = end;
   }
