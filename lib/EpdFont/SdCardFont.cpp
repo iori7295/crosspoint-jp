@@ -1211,7 +1211,6 @@ int SdCardFont::buildAdvanceTableRange(Iter begin, Iter end, bool includeSpace, 
   uint32_t codepoints[CHUNK_SIZE + 2];
   uint32_t cpCount = 0;
   int totalMissed = 0;
-  bool anyFetched = false;
 
   auto flushChunk = [&]() -> bool {
     if (cpCount == 0) return true;
@@ -1220,7 +1219,6 @@ int SdCardFont::buildAdvanceTableRange(Iter begin, Iter end, bool includeSpace, 
     if (missed < 0) return false;
     totalMissed += missed;
     cpCount = 0;
-    anyFetched = true;
     return true;
   };
 
@@ -1241,6 +1239,9 @@ int SdCardFont::buildAdvanceTableRange(Iter begin, Iter end, bool includeSpace, 
       }
     }
   }
+
+  // Safety flush: ensure room for space/hyphen injection below.
+  if (cpCount >= CHUNK_SIZE) { if (!flushChunk()) return -1; }
 
   if (includeSpace && std::none_of(codepoints, codepoints + cpCount, [](uint32_t c) { return c == ' '; }))
     codepoints[cpCount++] = ' ';

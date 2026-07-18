@@ -1565,20 +1565,27 @@ void ChapterHtmlSlimParser::makePages() {
 
   const int lineHeight = renderer.getLineHeight(fontId) * lineCompression;
 
-  // Apply top spacing before the paragraph (stored in pixels)
+  // Apply top spacing before the paragraph (stored in pixels).
+  // For vertical text, top/bottom CSS margins map to left/right offsets in
+  // the column-progression axis and must NOT reduce the column height.
   const BlockStyle& blockStyle = currentTextBlock->getBlockStyle();
-  if (blockStyle.marginTop > 0) {
-    currentPageNextY += blockStyle.marginTop;
-  }
-  if (blockStyle.paddingTop > 0) {
-    currentPageNextY += blockStyle.paddingTop;
+  if (!verticalMode) {
+    if (blockStyle.marginTop > 0) {
+      currentPageNextY += blockStyle.marginTop;
+    }
+    if (blockStyle.paddingTop > 0) {
+      currentPageNextY += blockStyle.paddingTop;
+    }
   }
 
   if (verticalMode) {
+    // Always reset Y so every column starts at the viewport top margin.
+    // layoutVerticalColumns handles internal first-line indent via
+    // firstLineIndentVal; the vertical progression is column X, not Y.
+    currentPageNextY = 0;
     const uint16_t columnWidth = renderer.getLineHeight(fontId);
-    const uint16_t colH = (currentPageNextY < viewportHeight) ? viewportHeight - currentPageNextY : 1;
     currentTextBlock->layoutVerticalColumns(
-        renderer, fontId, colH,
+        renderer, fontId, viewportHeight,
         [this](const std::shared_ptr<TextBlock>& textBlock) { addLineToPage(textBlock); });
   } else {
     const int horizontalInset = blockStyle.totalHorizontalInset();

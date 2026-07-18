@@ -828,9 +828,8 @@ void EpubReaderActivity::render(RenderLock&& lock) {
     } else if (SETTINGS.writingMode == CrossPointSettings::WM_HORIZONTAL) {
       verticalMode = false;
     } else {
-      verticalMode = epub->isPageProgressionRtl() ||
-                     (epub->getLanguage() == "ja" || epub->getLanguage() == "jpn" ||
-                      epub->getLanguage() == "zh" || epub->getLanguage() == "zho");
+      verticalMode = epub->getLanguage() == "ja" || epub->getLanguage() == "jpn" ||
+                     epub->getLanguage() == "zh" || epub->getLanguage() == "zho";
     }
   }
 
