@@ -1200,8 +1200,13 @@ void XMLCALL ChapterHtmlSlimParser::characterData(void* userData, const XML_Char
   // failure (operator new cannot return nullptr without std::nothrow, and C++ exceptions
   // are disabled on ESP32).
   const size_t wordCount = self->currentTextBlock->size();
-  const bool normalFlush = wordCount > 750;
-  const bool earlyFlush = wordCount > 100 && ESP.getFreeHeap() < MIN_FREE_HEAP_FOR_PARSING * 2;
+  // Lower threshold from 750 to 400 to reduce vector peak size and the
+  // contiguous-allocation spike during reallocation on fragmented heap.
+  const bool normalFlush = wordCount > 400;
+  const uint32_t freeHeap = ESP.getFreeHeap();
+  const uint32_t maxAlloc = ESP.getMaxAllocHeap();
+  // Monitor both free heap AND largest contiguous block (fragmentation gauge).
+  const bool earlyFlush = wordCount > 50 && (maxAlloc < 35000 || freeHeap < MIN_FREE_HEAP_FOR_PARSING * 2);
   if (normalFlush || earlyFlush) {
     LOG_DBG("EHP", "Text block too long, splitting into multiple pages");
     if (self->verticalMode) {
