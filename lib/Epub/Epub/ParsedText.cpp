@@ -661,6 +661,13 @@ void ParsedText::layoutVerticalColumns(
   // Compute first-line indent for vertical mode
   const int firstLineIndentVal = resolveFirstLineIndent(true, renderer, fontId);
 
+  // Heap guard: same thresholds as horizontal layout. When heap is too
+  // fragmented, skip non-essential processing (kinsoku, ruby) to avoid
+  // vector reallocation failures in the 2nd pass.
+  const bool lowHeap =
+      ESP.getFreeHeap() < MIN_FREE_HEAP_FOR_HYPHENATION ||
+      static_cast<size_t>(ESP.getMaxAllocHeap()) < MIN_MAX_ALLOC_FOR_HYPHENATION;
+
   // Helper: get the first codepoint of a word string
   auto firstCp = [](const std::string& w) -> uint32_t {
     const auto* p = reinterpret_cast<const unsigned char*>(w.c_str());
@@ -675,11 +682,13 @@ void ParsedText::layoutVerticalColumns(
     for (size_t i = 0; i < words.size(); i++) {
       if (currentY + wordHeights[i] > columnHeight && i > columnStart) {
         size_t breakAt = i;
-        while (breakAt > columnStart + 1 && VerticalTextUtils::isKinsokuHead(firstCp(words[breakAt]))) {
-          breakAt--;
-        }
-        if (breakAt > columnStart + 1 && VerticalTextUtils::isKinsokuTail(firstCp(words[breakAt - 1]))) {
-          breakAt--;
+        if (!lowHeap) {
+          while (breakAt > columnStart + 1 && VerticalTextUtils::isKinsokuHead(firstCp(words[breakAt]))) {
+            breakAt--;
+          }
+          if (breakAt > columnStart + 1 && VerticalTextUtils::isKinsokuTail(firstCp(words[breakAt - 1]))) {
+            breakAt--;
+          }
         }
         columnEnds.push_back(breakAt);
         columnStart = breakAt;
@@ -713,9 +722,10 @@ void ParsedText::layoutVerticalColumns(
     std::vector<EpdFontFamily::Style> colStyles(wordStyles.begin() + start, wordStyles.begin() + end);
     const size_t count = end - start;
     std::vector<std::string> colRubyTexts;
-    if (rubyTexts.size() >= end) {
+    if (!lowHeap && rubyTexts.size() >= end) {
+      colRubyTexts.reserve(count);
       colRubyTexts.assign(rubyTexts.begin() + start, rubyTexts.begin() + end);
-    } else {
+    } else if (!lowHeap) {
       colRubyTexts.resize(count);
     }
     colYpos.reserve(count);
