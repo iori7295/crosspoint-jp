@@ -12,7 +12,8 @@
 namespace {
 // v29: ruby text data added to TextBlock serialization.
 // v31: added charSpacing for direction-specific cache validation.
-constexpr uint8_t SECTION_FILE_VERSION = 32;
+constexpr uint8_t SECTION_FILE_VERSION = 33;
+// v33: added wordVerticalBehaviors persistence to TextBlock serialization.
 // Minimum free heap required to attempt section building. If below this threshold,
 // the section build would likely OOM mid-way, leaving a corrupt cache file that
 // causes crashes on subsequent boot. Better to abort early and show an error.

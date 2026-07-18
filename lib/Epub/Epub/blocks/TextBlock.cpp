@@ -148,6 +148,15 @@ bool TextBlock::serialize(HalFile& file) const {
   serialization::writePod(file, isVertical);
   if (isVertical) {
     for (auto y : wordYpos) serialization::writePod(file, y);
+    // Persist per-word vertical behaviour so Sideways/TateChuYoko survive
+    // section cache reload. Presence flag + array to maintain backward compat
+    // with old cache files (presence=0 → skip in deserialize).
+    const bool hasBehaviors = (wordVerticalBehaviors.size() == words.size());
+    serialization::writePod(file, static_cast<uint8_t>(hasBehaviors ? 1 : 0));
+    if (hasBehaviors) {
+      for (auto vb : wordVerticalBehaviors)
+        serialization::writePod(file, static_cast<uint8_t>(vb));
+    }
   }
 
   for (size_t i = 0; i < words.size(); i++) {
@@ -212,9 +221,21 @@ std::unique_ptr<TextBlock> TextBlock::deserialize(HalFile& file) {
   bool vertical = false;
   serialization::readPod(file, vertical);
   std::vector<int16_t> wordYpos;
+  std::vector<VerticalTextUtils::VerticalBehavior> wordVerticalBehaviors;
   if (vertical) {
     wordYpos.resize(wc);
     for (auto& y : wordYpos) serialization::readPod(file, y);
+    // Read per-word vertical behaviour if present (new format, presence flag).
+    uint8_t hasBehaviors = 0;
+    serialization::readPod(file, hasBehaviors);
+    if (hasBehaviors) {
+      wordVerticalBehaviors.resize(wc);
+      for (auto& vb : wordVerticalBehaviors) {
+        uint8_t raw = 0;
+        serialization::readPod(file, raw);
+        vb = static_cast<VerticalTextUtils::VerticalBehavior>(raw);
+      }
+    }
   }
 
   std::vector<std::string> rubyTexts(wc);
@@ -222,7 +243,8 @@ std::unique_ptr<TextBlock> TextBlock::deserialize(HalFile& file) {
 
   auto tb = new (std::nothrow) TextBlock(std::move(words), std::move(wordXpos), std::move(wordStyles),
                                           std::move(wordFocusBoundary), std::move(wordFocusSuffixX),
-                                          blockStyle, std::move(wordYpos), vertical, std::move(rubyTexts));
+                                          blockStyle, std::move(wordYpos), vertical, std::move(rubyTexts),
+                                          std::move(wordVerticalBehaviors));
   if (!tb) return nullptr;
   return std::unique_ptr<TextBlock>(tb);
 }
