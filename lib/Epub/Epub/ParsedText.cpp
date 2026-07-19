@@ -548,15 +548,8 @@ int ParsedText::resolveFirstLineIndent(const bool isFirstLine, const GfxRenderer
 /// zrn-ns behaviour which provides a fallback indent for EPUBs without any
 /// explicit indent (common in Japanese Aozora Bunko conversions).
 void ParsedText::applyParagraphIndent() {
-  if (words.empty()) return;
-  if (blockStyle.textIndentDefined && blockStyle.textIndent != 0) {
-    return;  // CSS or user toggle already provides indent
-  }
-  // Only insert EmSpace for left-aligned or justified text
-  if (blockStyle.alignment == CssTextAlign::Right || blockStyle.alignment == CssTextAlign::Center) {
-    return;
-  }
-  words.front().insert(0, "\xe2\x80\x83");  // U+2003 EM SPACE (UTF-8)
+  // Disabled for crash investigation — EmSpace insertion may cause heap
+  // corruption when called repeatedly across mid-block flushes.
 }
 
 void ParsedText::layoutAndExtractLines(const GfxRenderer& renderer, const int fontId, const uint16_t viewportWidth,
