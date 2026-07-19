@@ -410,13 +410,8 @@ uint8_t* ZipFile::readFileToMemory(const char* filename, size_t* size, const boo
     ctx.readBuf = fileReadBuffer;
     ctx.readBufSize = 1024;
 
-    // Full-buffer ONE-SHOT mode: output buffer (data) is already allocated, so
-    // the 32KB streaming dictionary is unnecessary.  One-shot deflate uses the
-    // output buffer itself as the back-reference window and avoids the 32KB
-    // allocation that fails on low-maxalloc transitions (Home→Reader).
-    // The zipReadCallback feeds compressed data on demand from the file.
-    if (!ctx.reader.init(false)) {
-      LOG_ERR("ZIP", "Failed to init inflate reader (one-shot)");
+    if (!ctx.reader.init(true)) {
+      LOG_ERR("ZIP", "Failed to init inflate reader");
       free(fileReadBuffer);
       free(data);
       return nullptr;
