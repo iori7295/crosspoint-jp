@@ -24,6 +24,7 @@ void TextBlock::render(const GfxRenderer& renderer, const int fontId, const int 
     const int baseLineHeight = renderer.getLineHeight(fontId);
     const int rubyLineHeight = (rubyFontId >= 0) ? renderer.getLineHeight(rubyFontId) : 0;
     const int lowerClip = -std::max(baseLineHeight, rubyLineHeight) * 2;
+    const int columnWidth = baseLineHeight;
     for (size_t i = 0; i < words.size(); i++) {
       const int wordX = wordXpos.empty() ? x : wordXpos[i] + x;
       const int wordY = (i < wordYpos.size()) ? y + wordYpos[i] : y;
@@ -35,7 +36,7 @@ void TextBlock::render(const GfxRenderer& renderer, const int fontId, const int 
                           : VerticalTextUtils::VerticalBehavior::Upright;
 
       if (vb == VerticalTextUtils::VerticalBehavior::Sideways) {
-        renderer.drawTextSideways(fontId, wordX, wordY, words[i].c_str(), true, wordStyles[i]);
+        renderer.drawTextSideways(fontId, wordX, wordY, words[i].c_str(), true, wordStyles[i], columnWidth);
       } else {
         renderer.drawTextVertical(fontId, wordX, wordY, words[i].c_str(), true, wordStyles[i]);
       }

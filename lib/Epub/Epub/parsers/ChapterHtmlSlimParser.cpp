@@ -1514,13 +1514,17 @@ void ChapterHtmlSlimParser::addLineToPage(std::shared_ptr<TextBlock> line) {
   if (verticalMode) {
     const int columnWidth = renderer.getLineHeight(fontId);
     const int columnSpacing = columnWidth / 4;
+    const int rubyReserve =
+        (line->hasRuby() && TextBlock::rubyFontId >= 0)
+            ? (renderer.getLineHeight(TextBlock::rubyFontId) + 2)
+            : 0;
 
     if (!currentPage) {
       currentPage.reset(new Page());
       currentPageNextX = viewportWidth - columnWidth;
     }
 
-    if (currentPageNextX < 0) {
+    if (currentPageNextX - rubyReserve < 0) {
       if (!currentPage->elements.empty()) {
         completePageFn(std::move(currentPage), xpathParagraphIndex, xpathListItemIndex);
         completedPageCount++;
@@ -1529,9 +1533,10 @@ void ChapterHtmlSlimParser::addLineToPage(std::shared_ptr<TextBlock> line) {
       currentPageNextX = viewportWidth - columnWidth;
     }
 
-    auto pageLine = std::make_shared<PageLine>(line, currentPageNextX, currentPageNextY);
+    const int baseX = currentPageNextX - rubyReserve;
+    auto pageLine = std::make_shared<PageLine>(line, baseX, currentPageNextY);
     currentPage->elements.push_back(std::move(pageLine));
-    currentPageNextX -= (columnWidth + columnSpacing);
+    currentPageNextX -= (columnWidth + rubyReserve + columnSpacing);
     return;
   }
 

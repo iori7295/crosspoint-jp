@@ -31,6 +31,13 @@ static constexpr PunctuationOffset VERTICAL_PUNCTUATION[] = {
     {0xFF1B, 2, -2, false},   // ；
     {0xFF01, 2, -2, false},   // ！
     {0xFF1F, 2, -2, false},   // ？
+    // ASCII punctuation
+    {'.', 2, -2, false},      // .
+    {',', 2, -2, false},      // ,
+    {':', 2, -2, false},      // :
+    {';', 2, -2, false},      // ;
+    {'!', 2, -2, false},      // !
+    {'?', 2, -2, false},      // ?
     // Opening brackets (上げ)
     {0x300C, -3, -2, false},  // 「
     {0x300E, -3, -2, false},  // 『
@@ -40,6 +47,9 @@ static constexpr PunctuationOffset VERTICAL_PUNCTUATION[] = {
     {0xFF3B, -3, -2, false},  // ［
     {0x3014, -3, -2, false},  // 〔
     {0x3010, -3, -2, false},  // 【
+    {'(', -2, -1, false},     // (
+    {'[', -2, -1, false},     // [
+    {'{', -2, -1, false},     // {
     // Closing brackets (下げ)
     {0x300D, 3, -2, false},   // 」
     {0x300F, 3, -2, false},   // 』
@@ -49,6 +59,9 @@ static constexpr PunctuationOffset VERTICAL_PUNCTUATION[] = {
     {0xFF3D, 3, -2, false},   // ］
     {0x3015, 3, -2, false},   // 〕
     {0x3011, 3, -2, false},   // 】
+    {')', 2, -1, false},      // )
+    {']', 2, -1, false},      // ]
+    {'}', 2, -1, false},      // }
     // Long marks and dashes (回転)
     {0x30FC, 0, 0, true},     // ー
     {0x2014, 0, 0, true},     // —
@@ -80,6 +93,13 @@ inline bool isUprightInVertical(uint32_t cp) {
   if (cp >= 0x3300 && cp <= 0x33FF) return true;
   if (cp >= 0x3100 && cp <= 0x312F) return true;
   if (cp >= 0xAC00 && cp <= 0xD7AF) return true;
+  switch (cp) {
+    case '.': case ',': case ':': case ';': case '!': case '?':
+    case '(' : case ')' : case '[' : case ']' : case '{' : case '}':
+      return true;
+    default:
+      break;
+  }
   return false;
 }
 
@@ -125,7 +145,10 @@ inline bool isKinsokuHead(uint32_t cp) {
          cp == 0x30C3 ||                  // ッ
          cp == 0x30E3 || cp == 0x30E5 ||  // ャュ
          cp == 0x30E7 || cp == 0x30EE ||  // ョヮ
-         cp == 0x30F5 || cp == 0x30F6;    // ヵヶ
+         cp == 0x30F5 || cp == 0x30F6 ||  // ヵヶ
+         cp == '.' || cp == ',' || cp == ':' || cp == ';' ||
+         cp == '!' || cp == '?' ||
+         cp == ')' || cp == ']' || cp == '}';
 }
 
 /// Characters that cannot appear at the end of a line in Japanese typesetting.
@@ -137,7 +160,8 @@ inline bool isKinsokuTail(uint32_t cp) {
          cp == 0xFF08 || cp == 0xFF3B ||  // （［
          cp == 0xFF5B ||                  // ｛
          cp == 0x3016 || cp == 0x3018 ||  // 〖〘
-         cp == 0x301A;                    // 〚
+         cp == 0x301A ||                  // 〚
+         cp == '(' || cp == '[' || cp == '{';
 }
 
 }  // namespace VerticalTextUtils

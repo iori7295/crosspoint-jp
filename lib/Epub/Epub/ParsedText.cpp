@@ -37,6 +37,37 @@ constexpr size_t RTL_PARAGRAPH_PROBE_WORDS = 3;
 constexpr int RTL_PER_WORD_PROBE_DEPTH = 64;
 constexpr size_t MIN_JUSTIFY_GAPS = 1;
 
+int countRenderableCodepoints(const std::string& word) {
+  int count = 0;
+  const auto* ptr = reinterpret_cast<const unsigned char*>(word.c_str());
+  while (*ptr) {
+    const uint32_t cp = utf8NextCodepoint(&ptr);
+    if (cp != 0) ++count;
+  }
+  return count > 0 ? count : 1;
+}
+
+bool isAsciiDigitsOnly(const std::string& word) {
+  if (word.empty()) return false;
+  const auto* ptr = reinterpret_cast<const unsigned char*>(word.c_str());
+  int count = 0;
+  while (*ptr) {
+    const uint32_t cp = utf8NextCodepoint(&ptr);
+    if (cp < '0' || cp > '9') return false;
+    ++count;
+    if (count > 2) return false;
+  }
+  return count >= 1 && count <= 2;
+}
+
+bool isAllUprightVertical(const std::string& word) {
+  const auto* ptr = reinterpret_cast<const unsigned char*>(word.c_str());
+  while (*ptr) {
+    if (!VerticalTextUtils::isUprightInVertical(utf8NextCodepoint(&ptr))) return false;
+  }
+  return !word.empty();
+}
+
 // Byte-level pre-check: Hebrew UTF-8 lead bytes 0xD6-0xD7, Arabic/Syriac 0xD8-0xDB.
 bool mayContainRtlBytes(const char* str) {
   for (const auto* p = reinterpret_cast<const unsigned char*>(str); *p; ++p) {
@@ -496,14 +527,18 @@ void ParsedText::addWord(std::string word, const EpdFontFamily::Style fontStyle,
   for (size_t i = oldSize; i < newSize; ++i) {
     auto behavior = vBehavior;
     // When a word was flagged Sideways, check every codepoint: if any is
-    // CJK (>= U+2E80) the word is actually Upright.  Only pure Latin/
-    // digit/ASCII-symbol words stay Sideways.
     if (behavior == VerticalTextUtils::VerticalBehavior::Sideways) {
-      const auto* ptr = reinterpret_cast<const unsigned char*>(words[i].c_str());
-      while (*ptr) {
-        if (utf8NextCodepoint(&ptr) >= 0x2E80) {
-          behavior = VerticalTextUtils::VerticalBehavior::Upright;
-          break;
+      if (isAsciiDigitsOnly(words[i])) {
+        behavior = VerticalTextUtils::VerticalBehavior::TateChuYoko;
+      } else if (isAllUprightVertical(words[i])) {
+        behavior = VerticalTextUtils::VerticalBehavior::Upright;
+      } else {
+        const auto* ptr = reinterpret_cast<const unsigned char*>(words[i].c_str());
+        while (*ptr) {
+          if (utf8NextCodepoint(&ptr) >= 0x2E80) {
+            behavior = VerticalTextUtils::VerticalBehavior::Upright;
+            break;
+          }
         }
       }
     }
@@ -540,6 +575,9 @@ int ParsedText::resolveFirstLineIndent(const bool isFirstLine, const GfxRenderer
     return 0;
   }
   if (!extraParagraphSpacing) {
+    if (!words.empty() && VerticalTextUtils::isUprightInVertical(firstCodepoint(words.front()))) {
+      return renderer.getLineHeight(fontId);
+    }
     return renderer.getSpaceWidth(fontId, EpdFontFamily::REGULAR) * 3;
   }
   return 0;
@@ -552,8 +590,9 @@ int ParsedText::resolveFirstLineIndent(const bool isFirstLine, const GfxRenderer
 /// zrn-ns behaviour which provides a fallback indent for EPUBs without any
 /// explicit indent (common in Japanese Aozora Bunko conversions).
 void ParsedText::applyParagraphIndent() {
-  // Disabled for crash investigation — EmSpace insertion may cause heap
-  // corruption when called repeatedly across mid-block flushes.
+  // Paragraph indent is handled as a layout offset (firstLineIndentVal in
+  // layout functions) instead of inserting synthetic glyphs.  Keeping this
+  // function live ensures callers don't hit a stale no-op path.
 }
 
 void ParsedText::layoutAndExtractLines(const GfxRenderer& renderer, const int fontId, const uint16_t viewportWidth,
@@ -663,46 +702,44 @@ void ParsedText::layoutVerticalColumns(
     renderer.ensureSdCardFontReady(fontId, words, false, styleMask);
   }
 
+  isNaturalAlign =
+      blockStyle.alignment == CssTextAlign::Justify ||
+      (blockStyle.isRtl ? blockStyle.alignment == CssTextAlign::Right
+                        : blockStyle.alignment == CssTextAlign::Left);
+
+  applyParagraphIndent();
+
   const int lineHeight = renderer.getLineHeight(fontId);
 
-  // Compute CJK character advance once from the first Upright word.
-  // This is used as the reference cell height for TateChuYoko and spacing.
-  int cjkCharAdvance = 0;
-  for (size_t i = 0; i < words.size() && cjkCharAdvance == 0; i++) {
-    auto vb = (i < wordVerticalBehaviors.size()) ? wordVerticalBehaviors[i]
-                                                  : VerticalTextUtils::VerticalBehavior::Upright;
-    if (vb == VerticalTextUtils::VerticalBehavior::Upright) {
-      cjkCharAdvance = renderer.getTextAdvanceX(fontId, words[i].c_str(), wordStyles[i]);
-    }
-  }
-  if (cjkCharAdvance == 0) cjkCharAdvance = lineHeight;
-
-  // Calculate word heights for vertical layout
+  // Match the renderer's actual vertical placement model:
+  // Upright / Sideways both place one cell per codepoint at lineHeight each.
+  // TateChuYoko occupies a single cell.
   std::vector<uint16_t> wordHeights;
   wordHeights.reserve(words.size());
   const int sp = renderer.getVerticalCharSpacing();
-  const int cjkSpacing = cjkCharAdvance * sp / 100;
+  const int tokenSpacing = lineHeight * sp / 100;
 
   for (size_t i = 0; i < words.size(); i++) {
     auto vb = (i < wordVerticalBehaviors.size()) ? wordVerticalBehaviors[i]
                                                   : VerticalTextUtils::VerticalBehavior::Upright;
-    uint16_t baseHeight;
+    int cells = 1;
     switch (vb) {
-      case VerticalTextUtils::VerticalBehavior::Sideways:
-        baseHeight = renderer.getTextAdvanceX(fontId, words[i].c_str(), wordStyles[i]);
-        break;
       case VerticalTextUtils::VerticalBehavior::TateChuYoko:
-        baseHeight = static_cast<uint16_t>(cjkCharAdvance);
+        cells = 1;
         break;
+      case VerticalTextUtils::VerticalBehavior::Sideways:
       default:
-        baseHeight = renderer.getTextAdvanceX(fontId, words[i].c_str(), wordStyles[i]);
+        cells = countRenderableCodepoints(words[i]);
         break;
     }
-    if (vb == VerticalTextUtils::VerticalBehavior::Upright) {
-      wordHeights.push_back(baseHeight + baseHeight * sp / 100);
-    } else {
-      wordHeights.push_back(baseHeight + cjkSpacing);
+
+    int reserve = 0;
+    if (i < rubyTexts.size() && !rubyTexts[i].empty() && TextBlock::rubyFontId >= 0) {
+      reserve = renderer.getLineHeight(TextBlock::rubyFontId) / 3;
     }
+
+    const int height = cells * lineHeight + tokenSpacing + reserve;
+    wordHeights.push_back(static_cast<uint16_t>(height > lineHeight ? height : lineHeight));
   }
 
   // Compute first-line indent for vertical mode
