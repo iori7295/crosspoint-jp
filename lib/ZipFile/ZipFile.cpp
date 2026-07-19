@@ -486,6 +486,17 @@ bool ZipFile::readFileToStream(const char* filename, Print& out, const size_t ch
   }
 
   if (fileStat.method == ZIP_METHOD_DEFLATED) {
+    // Small files (≤16KB decompressed): use one-shot inflate via readFileToMemory
+    // to avoid the 32KB streaming ring buffer that fails on low-maxalloc.
+    if (inflatedDataSize <= 16384) {
+      size_t actualSize;
+      auto* buf = readFileToMemory(filename, &actualSize, false);
+      if (!buf) return false;
+      const bool ok = out.write(buf, actualSize) == actualSize;
+      free(buf);
+      return ok;
+    }
+
     auto* fileReadBuffer = static_cast<uint8_t*>(malloc(chunkSize));
     if (!fileReadBuffer) {
       LOG_ERR("ZIP", "Failed to allocate memory for zip file read buffer");
