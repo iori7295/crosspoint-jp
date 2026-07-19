@@ -279,13 +279,13 @@ void ParsedText::addWord(std::string word, const EpdFontFamily::Style fontStyle,
   // requiring both old and new arrays in memory simultaneously. On a fragmented
   // 380KB heap this contiguous allocation can fail and call abort().
   if (words.capacity() == 0) {
-    words.reserve(1000);
-    wordStyles.reserve(1000);
-    wordContinues.reserve(1000);
-    wordNoSpaceBefore.reserve(1000);
-    wordIsFocusSuffix.reserve(1000);
-    rubyTexts.reserve(1000);
-    wordVerticalBehaviors.reserve(1000);
+    words.reserve(64);
+    wordStyles.reserve(64);
+    wordContinues.reserve(64);
+    wordNoSpaceBefore.reserve(64);
+    wordIsFocusSuffix.reserve(64);
+    rubyTexts.reserve(64);
+    wordVerticalBehaviors.reserve(64);
   }
 
   // Pre-compute CJK break offsets so we can reserve vector capacity before
