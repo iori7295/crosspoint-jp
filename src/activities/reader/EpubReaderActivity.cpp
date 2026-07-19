@@ -1010,6 +1010,10 @@ void EpubReaderActivity::render(RenderLock&& lock) {
 }
 
 void EpubReaderActivity::silentIndexNextChapterIfNeeded(const uint16_t viewportWidth, const uint16_t viewportHeight) {
+  // Disabled: background indexing doubles heap usage (current + next chapter)
+  // and exhausts the ~100KB heap on ESP32-C3 with CJK vertical text.
+  return;
+
   if (!epub || !section || section->pageCount < 2) {
     return;
   }
