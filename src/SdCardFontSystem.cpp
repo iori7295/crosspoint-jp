@@ -66,22 +66,11 @@ void SdCardFontSystem::begin(GfxRenderer& renderer) {
   };
   SETTINGS.sdFontResolverCtx = this;
 
-  // Load the horizontal-direction SD font at startup (body + auxiliaries).
-  if (SETTINGS.horizontal.sdFontFamilyName[0] != '\0') {
-    const auto* family = registry_.findFamily(SETTINGS.horizontal.sdFontFamilyName);
-    if (family) {
-      if (loadReaderRoleSet(manager_, renderer, *family, false)) {
-        lastLoadedFamily_[0] = family->name;
-        lastLoadedBodyEnum_[0] = fontSizeEnumFromSettings(false);
-      }
-    } else {
-      LOG_DBG("SDFS", "SD font family not found on card: %s (clearing)", SETTINGS.horizontal.sdFontFamilyName);
-      SETTINGS.horizontal.sdFontFamilyName[0] = '\0';
-      SETTINGS.saveToFile();
-    }
-  }
-
-  LOG_DBG("SDFS", "SD font system ready (%d families discovered)", registry_.getFamilyCount());
+  // Do NOT eagerly load reader fonts at boot. EPUB OPF/container.xml parsing
+  // and Home/FileBrowser do not need SD reader fonts; preloading them reduces
+  // max alloc and makes ZIP inflate init fail for tiny EPUB metadata files.
+  // Actual font loading happens lazily in ensureLoaded().
+  LOG_DBG("SDFS", "SD font system ready (lazy load, %d families discovered)", registry_.getFamilyCount());
 }
 
 void SdCardFontSystem::ensureLoaded(GfxRenderer& renderer, bool isVertical) {
