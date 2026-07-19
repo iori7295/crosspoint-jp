@@ -731,6 +731,15 @@ void ParsedText::layoutVerticalColumns(
     int currentY = firstLineIndentVal;
     size_t i = 0;
     while (i < words.size()) {
+      // Single word taller than the whole column: force it into its own column
+      // even when it is the first word on the line (i == columnStart).
+      if (wordHeights[i] > columnHeight) {
+        columnEnds.push_back(i);
+        columnStart = i;
+        currentY = 0;
+        i++;
+        continue;
+      }
       if (currentY + wordHeights[i] > columnHeight && i > columnStart) {
         size_t breakAt = i;
         if (!lowHeap) {

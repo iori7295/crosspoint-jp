@@ -1208,7 +1208,14 @@ int SdCardFont::buildAdvanceTableRange(Iter begin, Iter end, bool includeSpace, 
   // up to 4KB) that failed under heap fragmentation on the 380 KB C3.
   static constexpr uint32_t CHUNK_SIZE = 128;
   // +2 reserved slots for space and hyphen injected after the main scan.
-  uint32_t codepoints[CHUNK_SIZE + 2];
+  // Heap-allocate to avoid 520 bytes of stack at the deepest Expat→
+  // characterData→addWord→layout→ensureSdCardFontReady call depth,
+  // which overflows the 16 KB ActivityManagerRender task stack.
+  uint32_t* codepoints = new (std::nothrow) uint32_t[CHUNK_SIZE + 2];
+  if (!codepoints) {
+    LOG_ERR("SDCF", "buildAdvanceTableRange: failed to allocate codepoint buffer (%u bytes)", (CHUNK_SIZE + 2) * 4);
+    return -1;
+  }
   uint32_t cpCount = 0;
   int totalMissed = 0;
 
@@ -1234,24 +1241,23 @@ int SdCardFont::buildAdvanceTableRange(Iter begin, Iter end, bool includeSpace, 
       if (!found) {
         codepoints[cpCount++] = cp;
         if (cpCount >= CHUNK_SIZE) {
-          if (!flushChunk()) return -1;
+          if (!flushChunk()) { delete[] codepoints; return -1; }
         }
       }
     }
   }
 
-  // Safety flush: ensure room for space/hyphen injection below.
-  if (cpCount >= CHUNK_SIZE) { if (!flushChunk()) return -1; }
+  if (cpCount >= CHUNK_SIZE) { if (!flushChunk()) { delete[] codepoints; return -1; } }
 
   if (includeSpace && std::none_of(codepoints, codepoints + cpCount, [](uint32_t c) { return c == ' '; }))
     codepoints[cpCount++] = ' ';
   if (includeHyphen && std::none_of(codepoints, codepoints + cpCount, [](uint32_t c) { return c == '-'; }))
     codepoints[cpCount++] = '-';
 
-  if (!flushChunk()) return -1;
-
+  int result = flushChunk() ? totalMissed : -1;
+  delete[] codepoints;
   stats_.prewarmTotalMs = millis() - startMs;
-  return totalMissed;
+  return result;
 }
 
 int SdCardFont::buildAdvanceTable(const char* utf8Text, uint8_t styleMask) {

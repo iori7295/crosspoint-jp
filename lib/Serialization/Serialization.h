@@ -46,6 +46,8 @@ inline void readString(std::istream& is, std::string& s) {
 inline void readString(HalFile& file, std::string& s) {
   uint32_t len;
   readPod(file, len);
+  // Cap string length to prevent OOM from corrupt section cache files.
+  if (len > 4096) { s.clear(); return; }
   s.resize(len);
   file.read(&s[0], len);
 }
