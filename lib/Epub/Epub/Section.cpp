@@ -362,6 +362,22 @@ std::string Section::getTextFromSectionFile() {
   std::string fullText;
   auto p = this->loadPageFromSectionFile();
   if (p) {
+    // Pre-allocate to avoid repeated reallocation during concatenation.
+    // CJK text produces one word per character (no word separators), so a
+    // page can have hundreds of words — each reallocation on a fragmented
+    // heap risks abort() from std::bad_alloc under -fno-exceptions.
+    size_t estimated = 0;
+    for (const auto& el : p->elements) {
+      if (el->getTag() == TAG_PageLine) {
+        const auto& line = static_cast<const PageLine&>(*el);
+        if (line.getBlock()) {
+          for (const auto& w : line.getBlock()->getWords()) {
+            estimated += w.size() + 1;
+          }
+        }
+      }
+    }
+    fullText.reserve(fullText.size() + estimated);
     for (const auto& el : p->elements) {
       if (el->getTag() == TAG_PageLine) {
         const auto& line = static_cast<const PageLine&>(*el);

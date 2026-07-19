@@ -734,8 +734,8 @@ void ParsedText::layoutVerticalColumns(
       // Single word taller than the whole column: force it into its own column
       // even when it is the first word on the line (i == columnStart).
       if (wordHeights[i] > columnHeight) {
-        columnEnds.push_back(i);
-        columnStart = i;
+        columnEnds.push_back(i + 1);
+        columnStart = i + 1;
         currentY = 0;
         i++;
         continue;

@@ -11,6 +11,14 @@ int TextBlock::rubyFontId = -1;
 
 void TextBlock::render(const GfxRenderer& renderer, const int fontId, const int x, const int y) const {
   if (isVertical) {
+    if (words.size() != wordStyles.size() ||
+        (!wordXpos.empty() && words.size() != wordXpos.size()) ||
+        (!wordYpos.empty() && words.size() != wordYpos.size())) {
+      LOG_ERR("TXB", "Vertical render skipped: size mismatch (words=%u styles=%u xpos=%u ypos=%u)",
+              (uint32_t)words.size(), (uint32_t)wordStyles.size(),
+              (uint32_t)wordXpos.size(), (uint32_t)wordYpos.size());
+      return;
+    }
     for (size_t i = 0; i < words.size(); i++) {
       const int wordX = wordXpos.empty() ? x : wordXpos[i] + x;
       const int wordY = (i < wordYpos.size()) ? y + wordYpos[i] : y;
