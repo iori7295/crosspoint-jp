@@ -1517,9 +1517,11 @@ void ChapterHtmlSlimParser::addLineToPage(std::shared_ptr<TextBlock> line) {
     }
 
     if (currentPageNextX < 0) {
-      completePageFn(std::move(currentPage), xpathParagraphIndex, xpathListItemIndex);
-      completedPageCount++;
-      currentPage.reset(new Page());
+      if (!currentPage->elements.empty()) {
+        completePageFn(std::move(currentPage), xpathParagraphIndex, xpathListItemIndex);
+        completedPageCount++;
+        currentPage.reset(new Page());
+      }
       currentPageNextX = viewportWidth - columnWidth;
     }
 
