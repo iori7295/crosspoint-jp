@@ -77,9 +77,19 @@ void HalDisplay::deepSleep() { einkDisplay.deepSleep(); }
 
 uint8_t* HalDisplay::getFrameBuffer() const { return einkDisplay.getFrameBuffer(); }
 
-uint8_t* HalDisplay::lendFrameBufferStorage(uint32_t* sizeOut) { return einkDisplay.lendBuildStorage(sizeOut); }
+uint8_t* HalDisplay::lendFrameBufferStorage(uint32_t* sizeOut) {
+  // Return the static framebuffer storage IN PLACE so build phases can claim
+  // it via buildscratch. The allocation is never freed, making repeated loans
+  // safe from heap fragmentation.
+  if (sizeOut) *sizeOut = einkDisplay.getBufferSize();
+  return einkDisplay.getFrameBuffer();
+}
 
-void HalDisplay::returnFrameBufferStorage() { einkDisplay.returnBuildStorage(); }
+void HalDisplay::returnFrameBufferStorage() {
+  // Clear to white so the next full redraw starts clean.
+  uint8_t* fb = einkDisplay.getFrameBuffer();
+  if (fb) memset(fb, 0xFF, einkDisplay.getBufferSize());
+}
 
 void HalDisplay::copyGrayscaleBuffers(const uint8_t* lsbBuffer, const uint8_t* msbBuffer) {
   einkDisplay.copyGrayscaleBuffers(lsbBuffer, msbBuffer);
