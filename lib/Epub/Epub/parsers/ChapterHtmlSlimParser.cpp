@@ -1204,7 +1204,7 @@ void XMLCALL ChapterHtmlSlimParser::characterData(void* userData, const XML_Char
   // Latin text, so keeping 750 words would create a huge vector peak. Flush at
   // 100 words (~3-4 lines) to keep working set small and avoid OOM.
   const size_t wordCount = self->currentTextBlock->size();
-  const bool normalFlush = wordCount > 60;
+  const bool normalFlush = wordCount > 30;
   const uint32_t freeHeap = ESP.getFreeHeap();
   const uint32_t maxAlloc = ESP.getMaxAllocHeap();
   // Monitor both free heap AND largest contiguous block (fragmentation gauge).
