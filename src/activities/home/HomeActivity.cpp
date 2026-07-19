@@ -68,6 +68,13 @@ void HomeActivity::loadRecentCovers(int coverHeight) {
           epub.load(false, true);
 
           // Try to generate thumbnail image for Continue Reading card
+          // Skip when heap is too low — JPEG decode needs ~53KB and a failed
+          // thumb generation inflates memory pressure for no benefit.
+          if (ESP.getFreeHeap() < 55000) {
+            RECENT_BOOKS.updateBook(book.path, book.title, book.author, "");
+            book.coverBmpPath = "";
+            continue;
+          }
           if (!showingLoading) {
             showingLoading = true;
             popupRect = GUI.drawPopup(renderer, tr(STR_LOADING_POPUP));

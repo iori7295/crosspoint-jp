@@ -14,6 +14,8 @@
 #include "components/UITheme.h"
 #include "fontIds.h"
 
+extern void setupUiFontFallback();
+
 namespace {
 constexpr const char* ELLIPSIS_UTF8 = "\xe2\x80\xa6";
 
@@ -78,6 +80,7 @@ void FontSelectionActivity::loop() {
     strncpy(ds.sdFontFamilyName, originalSdFontFamilyName_, sizeof(ds.sdFontFamilyName) - 1);
     ds.sdFontFamilyName[sizeof(ds.sdFontFamilyName) - 1] = '\0';
     sdFontSystem.ensureLoaded(renderer);
+    setupUiFontFallback();
     finish();
     return;
   }
@@ -99,6 +102,7 @@ void FontSelectionActivity::loop() {
           strncpy(ds.sdFontFamilyName, families[sdIdx].name.c_str(), sizeof(ds.sdFontFamilyName) - 1);
           ds.sdFontFamilyName[sizeof(ds.sdFontFamilyName) - 1] = '\0';
           sdFontSystem.ensureLoaded(renderer);
+          setupUiFontFallback();
         }
       }
       requestUpdate();

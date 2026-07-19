@@ -624,8 +624,8 @@ void EpubReaderActivity::onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction 
           uint16_t backupPageCount = section->pageCount;
           section.reset();
           epub->clearCache();
-  TextBlock::rubyFontId = SMALL_FONT_ID;
-  epub->setupCacheDir();
+          TextBlock::rubyFontId = SETTINGS.getTableFontId(verticalMode);
+          epub->setupCacheDir();
           if (!saveProgress(backupSpine, backupPage, backupPageCount)) {
             LOG_ERR("ERS", "Failed to save progress before cache clear");
           }
@@ -880,22 +880,31 @@ void EpubReaderActivity::render(RenderLock&& lock) {
       auto* fcm = renderer.getFontCacheManager();
       fcm->clearCache();
 
+      // No popup redraws while the framebuffer is lent out below; the panel
+      // keeps the "Indexing…" popup (e-ink is persistent).
       const auto popupFn = [this]() {
-        GUI.drawPopup(renderer, tr(STR_INDEXING));
-        renderer.displayBuffer();
+        if (renderer.hasFrameBuffer()) {
+          GUI.drawPopup(renderer, tr(STR_INDEXING));
+          renderer.displayBuffer();
+        }
       };
 
       const int headingFontIds[6] = {SETTINGS.getHeadingFontId(1, verticalMode), SETTINGS.getHeadingFontId(2, verticalMode), 0, 0, 0, 0};
 
-      if (!section->createSectionFile(SETTINGS.getReaderFontId(verticalMode), lineCompression,
-                                      ds.extraParagraphSpacing, ds.paragraphAlignment, viewportWidth,
-                                      viewportHeight, ds.hyphenationEnabled, SETTINGS.embeddedStyle,
-                                      SETTINGS.imageRendering, SETTINGS.focusReadingEnabled,
-                                      ds.firstLineIndent, popupFn, verticalMode, headingFontIds)) {
-        LOG_ERR("ERS", "Failed to persist page data to SD");
-        section.reset();
-        showPendingSyncSaveError();
-        return;
+      // Lend the framebuffer's 52 KB to the blocking full build; restored
+      // (white) at scope exit, and the page render below redraws everything.
+      {
+        GfxRenderer::FrameBufferLoan loan(renderer);
+        if (!section->createSectionFile(SETTINGS.getReaderFontId(verticalMode), lineCompression,
+                                        ds.extraParagraphSpacing, ds.paragraphAlignment, viewportWidth,
+                                        viewportHeight, ds.hyphenationEnabled, SETTINGS.embeddedStyle,
+                                        SETTINGS.imageRendering, SETTINGS.focusReadingEnabled,
+                                        ds.firstLineIndent, popupFn, verticalMode, headingFontIds)) {
+          LOG_ERR("ERS", "Failed to persist page data to SD");
+          section.reset();
+          showPendingSyncSaveError();
+          return;
+        }
       }
     } else {
       LOG_DBG("ERS", "Cache found, skipping build...");
@@ -1062,7 +1071,7 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
   const bool needsTextGrayscale = SETTINGS.getDirectionSettings(verticalMode).textAntiAliasing;
 
   // Ensure ruby font is set for the rendering pass.
-  TextBlock::rubyFontId = SMALL_FONT_ID;
+  TextBlock::rubyFontId = SETTINGS.getTableFontId(verticalMode);
 
   // Apply vertical character spacing from direction settings.
   renderer.setVerticalCharSpacing(SETTINGS.getDirectionSettings(verticalMode).charSpacing);

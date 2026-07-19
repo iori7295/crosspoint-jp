@@ -227,6 +227,24 @@ bool Section::createSectionFile(const int fontId, const float lineCompression, c
 
   LOG_DBG("SCT", "Streamed temp HTML to %s (%d bytes)", tmpHtmlPath.c_str(), fileSize);
 
+  // Navigation sections (nav.xhtml) are not page content; skip full parsing when
+  // heap is marginal to avoid a low-heap bailout that leaves a zero-page cache
+  // and forces rebuild on every navigation to this spine item.
+  if (fileSize > 0 && localPath.find("nav.") != std::string::npos &&
+      ESP.getFreeHeap() < MIN_FREE_HEAP_FOR_SECTION_BUILD * 2) {
+    LOG_DBG("SCT", "Navigation section with marginal heap (%u), creating empty section",
+            ESP.getFreeHeap());
+    if (!Storage.openFileForWrite("SCT", filePath, file)) {
+      return false;
+    }
+    writeSectionFileHeader(fontId, lineCompression, extraParagraphSpacing, paragraphAlignment,
+                           viewportWidth, viewportHeight, hyphenationEnabled, embeddedStyle,
+                           imageRendering, focusReadingEnabled, verticalMode, charSpacing);
+    file.close();
+    Storage.remove(tmpHtmlPath.c_str());
+    return true;
+  }
+
   if (!Storage.openFileForWrite("SCT", filePath, file)) {
     return false;
   }

@@ -6,6 +6,9 @@
 #include <SdCardFont.h>
 #include <SdCardFontRegistry.h>
 
+#include <algorithm>
+#include <climits>
+
 SdCardFontManager::~SdCardFontManager() {
   for (auto& lf : loaded_) {
     delete lf.font;
@@ -28,18 +31,40 @@ int SdCardFontManager::computeFontId(uint32_t contentHash, const char* familyNam
   return id != 0 ? id : 1;  // 0 is reserved as "not found" sentinel
 }
 
+// Map fontSizeEnum (0-3) to the target point size used for "closest" matching.
+// Must match the mapping in SdCardFontFamilyInfo::findClosestReaderSize.
+uint8_t SdCardFontManager::targetPointSize(uint8_t fontSizeEnum) {
+  switch (fontSizeEnum) {
+    case 0:  return 12;   // SMALL
+    case 1:  return 14;   // MEDIUM
+    case 2:  return 16;   // LARGE
+    case 3:  return 18;   // EXTRA_LARGE
+    default: return 14;
+  }
+}
+
+int SdCardFontManager::findSlotByEnum(uint8_t fontSizeEnum) const {
+  for (size_t i = 0; i < loaded_.size(); i++) {
+    if (loaded_[i].loadedFor == fontSizeEnum) return static_cast<int>(i);
+  }
+  return -1;
+}
+
 bool SdCardFontManager::loadFamily(const SdCardFontFamilyInfo& family, GfxRenderer& renderer, uint8_t fontSizeEnum) {
-  // Unload any previously loaded family first
-  if (!loadedFamilyName_.empty()) {
+  // If a different family is loaded, unload everything first.
+  if (!loadedFamilyName_.empty() && loadedFamilyName_ != family.name) {
     unloadAll(renderer);
   }
 
-  // Select the physical point size closest to the built-in reader sizes. Some
-  // CJK font packs only ship larger sizes, so ordinal selection can make
-  // MEDIUM load 18pt+ and produce oversized pages on small devices.
+  // If this exact fontSizeEnum is already loaded for the same family, skip.
+  if (!loaded_.empty() && loadedFamilyName_ == family.name && findSlotByEnum(fontSizeEnum) >= 0) {
+    return true;
+  }
+
+  // Select the physical point size closest to the target for this fontSizeEnum.
   const SdCardFontFileInfo* selected = family.findClosestReaderSize(fontSizeEnum);
   if (!selected) {
-    LOG_ERR("SDMGR", "Family %s has no files to load", family.name.c_str());
+    LOG_ERR("SDMGR", "Family %s has no files to load (enum %u)", family.name.c_str(), fontSizeEnum);
     return false;
   }
 
@@ -56,24 +81,28 @@ bool SdCardFontManager::loadFamily(const SdCardFontFamilyInfo& family, GfxRender
   }
 
   int fontId = computeFontId(font->contentHash(), family.name.c_str(), selected->pointSize);
-  // Guard against collision with built-in font IDs (astronomically unlikely
-  // with FNV-1a hashes, but provides a safety net)
   if (renderer.getFontMap().count(fontId) != 0) {
     LOG_ERR("SDMGR", "Font ID %d collides with existing font, skipping %s", fontId, selected->path.c_str());
     delete font;
     return false;
   }
   renderer.registerSdCardFont(fontId, font);
-  loaded_.push_back({font, fontId, selected->pointSize});
-
-  LOG_DBG("SDMGR", "Loaded %s size=%u id=%d styles=%u (sizeEnum=%u)", selected->path.c_str(), selected->pointSize,
-          fontId, font->styleCount(), fontSizeEnum);
 
   EpdFontFamily fontFamily(font->getEpdFont(0), font->getEpdFont(1), font->getEpdFont(2), font->getEpdFont(3));
   renderer.insertFont(fontId, fontFamily);
 
+  loaded_.push_back({font, fontId, selected->pointSize, fontSizeEnum});
   loadedFamilyName_ = family.name;
-  loadedPointSize_ = selected->pointSize;
+
+  // Keep body (primary) size metadata in the dedicated field for backward compat.
+  if (loaded_.size() == 1 || fontSizeEnum == 1) {
+    loadedPointSize_ = selected->pointSize;
+  }
+
+  LOG_DBG("SDMGR", "Loaded %s size=%u pt id=%d styles=%u (enum=%u) [%zu total sizes]",
+          selected->path.c_str(), selected->pointSize, fontId, font->styleCount(),
+          fontSizeEnum, loaded_.size());
+
   return true;
 }
 
@@ -88,7 +117,13 @@ void SdCardFontManager::unloadAll(GfxRenderer& renderer) {
   loadedPointSize_ = 0;
 }
 
-int SdCardFontManager::getFontId(const std::string& familyName) const {
+int SdCardFontManager::getFontId(const std::string& familyName, uint8_t fontSizeEnum) const {
   if (familyName != loadedFamilyName_ || loaded_.empty()) return 0;
+
+  // Exact match on fontSizeEnum.
+  int slot = findSlotByEnum(fontSizeEnum);
+  if (slot >= 0) return loaded_[slot].fontId;
+
+  // Fall back to the body size (loaded with enum=1 / MEDIUM, or the first slot).
   return loaded_.front().fontId;
 }

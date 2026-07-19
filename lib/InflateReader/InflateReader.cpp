@@ -1,5 +1,7 @@
 #include "InflateReader.h"
 
+#include <BuildScratch.h>
+
 #include <cstring>
 #include <type_traits>
 
@@ -17,9 +19,20 @@ bool InflateReader::init(const bool streaming) {
   deinit();  // free any previously allocated ring buffer and reset state
 
   if (streaming) {
-    ringBuffer = static_cast<uint8_t*>(malloc(INFLATE_DICT_SIZE));
+    // Try the build scratch first (the lent framebuffer bytes, ~52KB) so the
+    // 32KB dictionary costs the heap nothing during a chapter build. If the
+    // scratch is absent or already claimed, fall back to plain malloc.
+    ringBuffer = buildscratch::claim(INFLATE_DICT_SIZE);
+    if (ringBuffer) {
+      fromScratch_ = true;
+    } else {
+      ringBuffer = static_cast<uint8_t*>(malloc(INFLATE_DICT_SIZE));
+      fromScratch_ = false;
+    }
     if (!ringBuffer) return false;
     memset(ringBuffer, 0, INFLATE_DICT_SIZE);
+  } else {
+    fromScratch_ = false;
   }
 
   uzlib_uncompress_init(&decomp, ringBuffer, ringBuffer ? INFLATE_DICT_SIZE : 0);
@@ -28,8 +41,13 @@ bool InflateReader::init(const bool streaming) {
 
 void InflateReader::deinit() {
   if (ringBuffer) {
-    free(ringBuffer);
+    if (fromScratch_) {
+      buildscratch::release(ringBuffer);
+    } else {
+      free(ringBuffer);
+    }
     ringBuffer = nullptr;
+    fromScratch_ = false;
   }
   memset(&decomp, 0, sizeof(decomp));
 }

@@ -274,18 +274,22 @@ void ParsedText::addWord(std::string word, const EpdFontFamily::Style fontStyle,
   const bool wordStartsRtl = !hasRtlWord && mayContainRtlBytes(word.c_str()) &&
                              BidiUtils::startsWithRtl(word.c_str(), RTL_PER_WORD_PROBE_DEPTH);
 
-  // Pre-allocate to match the 750-word flush threshold in characterData().
-  // Without reserve(), std::vector doubles capacity on each reallocation,
-  // requiring both old and new arrays in memory simultaneously. On a fragmented
-  // 380KB heap this contiguous allocation can fail and call abort().
+  // Fixed-capacity pool: reserve 800 slots ONCE per section so that
+  // repeated flush→erase cycles never trigger a reallocation.  Without
+  // this, std::vector doubles capacity on each push-back beyond the
+  // current limit, requiring both old and new arrays simultaneously on
+  // a fragmented 380 KB heap – the leading cause of bad_alloc / abort().
+  //
+  // rubyTexts is deliberately NOT reserved here – it uses lazy
+  // initialisation (setRubyFor… → resize) so the 99 % of paragraphs
+  // without ruby never pay the allocation cost.
   if (words.capacity() == 0) {
-    words.reserve(64);
-    wordStyles.reserve(64);
-    wordContinues.reserve(64);
-    wordNoSpaceBefore.reserve(64);
-    wordIsFocusSuffix.reserve(64);
-    rubyTexts.reserve(64);
-    wordVerticalBehaviors.reserve(64);
+    words.reserve(800);
+    wordStyles.reserve(800);
+    wordContinues.reserve(800);
+    wordNoSpaceBefore.reserve(800);
+    wordIsFocusSuffix.reserve(800);
+    wordVerticalBehaviors.reserve(800);
   }
 
   // Pre-compute CJK break offsets so we can reserve vector capacity before

@@ -143,7 +143,10 @@ uint32_t EpdFont::applyLigatures(uint32_t cp, const char*& text) const {
   while (true) {
     const auto saved = reinterpret_cast<const uint8_t*>(text);
     const uint32_t nextCp = utf8NextCodepoint(reinterpret_cast<const uint8_t**>(&text));
-    if (nextCp == 0) break;
+    if (nextCp == 0) {
+      text = reinterpret_cast<const char*>(saved);
+      break;
+    }
     const uint32_t lig = getLigature(cp, nextCp);
     if (lig == 0) {
       text = reinterpret_cast<const char*>(saved);

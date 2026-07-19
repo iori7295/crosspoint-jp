@@ -314,7 +314,15 @@ void setupUiFontFallback() {
   };
 
   if (trySet(SETTINGS.getReaderFontId(false))) return;
-  trySet(SETTINGS.getReaderFontId(true));
+  if (trySet(SETTINGS.getReaderFontId(true))) return;
+
+  // If no reader font is set to an SD font, fall back to the first loaded SD font.
+  for (const auto& [id, family] : renderer.getFontMap()) {
+    if (renderer.isSdCardFont(id)) {
+      if (trySet(id)) return;
+      break;
+    }
+  }
 }
 
 void setupDisplayAndFonts(bool seamless = false) {
