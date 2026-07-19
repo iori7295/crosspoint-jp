@@ -549,13 +549,14 @@ int ParsedText::resolveFirstLineIndent(const bool isFirstLine, const GfxRenderer
 /// explicit indent (common in Japanese Aozora Bunko conversions).
 void ParsedText::applyParagraphIndent() {
   if (words.empty()) return;
-  if (firstLineIndent || blockStyle.textIndentDefined) {
-    // User toggle or CSS already handles indent — do nothing.
+  if (blockStyle.textIndentDefined && blockStyle.textIndent != 0) {
+    return;  // CSS or user toggle already provides indent
+  }
+  // Only insert EmSpace for left-aligned or justified text
+  if (blockStyle.alignment == CssTextAlign::Right || blockStyle.alignment == CssTextAlign::Center) {
     return;
   }
-  if (blockStyle.alignment == CssTextAlign::Justify || blockStyle.alignment == CssTextAlign::Left) {
-    words.front().insert(0, "\xe2\x80\x83");  // U+2003 EM SPACE (UTF-8)
-  }
+  words.front().insert(0, "\xe2\x80\x83");  // U+2003 EM SPACE (UTF-8)
 }
 
 void ParsedText::layoutAndExtractLines(const GfxRenderer& renderer, const int fontId, const uint16_t viewportWidth,
