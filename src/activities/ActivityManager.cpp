@@ -21,7 +21,7 @@
 
 void ActivityManager::begin() {
   xTaskCreate(&renderTaskTrampoline, "ActivityManagerRender",
-              16384,             // Stack size (was 8192 — overflowed with deep Expat→layout→buildAdvanceTableRange chain for vertical CJK)
+              24576,             // Stack size (was 16384 — still overflowing with Expat→layout chain for vertical CJK)
               this,              // Parameters
               1,                 // Priority
               &renderTaskHandle  // Task handle
