@@ -45,13 +45,8 @@ static bool loadReaderRoleSet(SdCardFontManager& mgr, GfxRenderer& renderer,
                               const SdCardFontFamilyInfo& family, bool isVertical) {
   const uint8_t body = fontSizeEnumFromSettings(isVertical);
   const uint8_t small = smallSizeEnum(isVertical);
-  const uint8_t heading = headingSizeEnum(isVertical);
   if (!loadOneSize(mgr, renderer, family, body, "body")) return false;
   loadOneSize(mgr, renderer, family, small, "small");
-  loadOneSize(mgr, renderer, family, heading, "heading");
-  loadOneSize(mgr, renderer, family, tableSizeEnum(), "table");
-  loadOneSize(mgr, renderer, family, rubySizeEnum(), "ruby");
-  loadOneSize(mgr, renderer, family, footnoteSizeEnum(), "footnote");
   return true;
 }
 
