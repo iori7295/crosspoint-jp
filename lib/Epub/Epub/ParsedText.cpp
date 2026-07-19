@@ -744,9 +744,6 @@ void ParsedText::layoutVerticalColumns(
         columnEnds.push_back(breakAt);
         columnStart = breakAt;
         currentY = 0;
-        for (size_t j = columnStart; j <= i; j++) {
-          currentY += wordHeights[j];
-        }
         i = breakAt;
         continue;
       }
