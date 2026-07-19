@@ -31,7 +31,7 @@ constexpr size_t MAX_ANCHORS_PER_CHAPTER = 1024;
 
 // Minimum free heap to continue parsing. Below this, flush the text block early
 // to prevent abort() from failed allocations (no C++ exceptions on ESP32).
-constexpr size_t MIN_FREE_HEAP_FOR_PARSING = 20 * 1024;  // 20KB
+constexpr size_t MIN_FREE_HEAP_FOR_PARSING = 12 * 1024;  // 12KB
 
 // Decode a single Unicode codepoint from UTF-8 bytes. Returns 0 on invalid data.
 uint32_t decodeUtf8Codepoint(const char* s, int maxLen) {
@@ -1204,7 +1204,7 @@ void XMLCALL ChapterHtmlSlimParser::characterData(void* userData, const XML_Char
   // Latin text, so keeping 750 words would create a huge vector peak. Flush at
   // 100 words (~3-4 lines) to keep working set small and avoid OOM.
   const size_t wordCount = self->currentTextBlock->size();
-  const bool normalFlush = wordCount > 100;
+  const bool normalFlush = wordCount > 60;
   const uint32_t freeHeap = ESP.getFreeHeap();
   const uint32_t maxAlloc = ESP.getMaxAllocHeap();
   // Monitor both free heap AND largest contiguous block (fragmentation gauge).
