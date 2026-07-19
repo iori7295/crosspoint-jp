@@ -31,6 +31,10 @@ struct BlockStyle {
   bool textAlignDefined = false;   // true if text-align was explicitly set in CSS
   bool isRtl = false;              // true if resolved direction is RTL
   bool directionDefined = false;   // true if direction was explicitly set in CSS/HTML
+  // Per-block font override.  0 = use the paragraph font (default).
+  int fontId = 0;
+  // Draw a full-width separator line below this block (used for h1/h2 headings).
+  bool drawSeparatorBelow = false;
 
   // Combined insets (margin + padding)
   [[nodiscard]] int16_t leftInset() const { return marginLeft + paddingLeft; }

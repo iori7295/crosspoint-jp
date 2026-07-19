@@ -83,17 +83,36 @@ inline bool isUprightInVertical(uint32_t cp) {
   return false;
 }
 
+/// Returns true if the font may have a vertical-specific glyph (via OTVert /
+/// 'vert' feature) for this codepoint.  Callers that have access to font
+/// metadata can use this to decide between the default upright glyph and the
+/// font-provided vertical variant.
+inline bool shouldUseVertGlyph(uint32_t cp) {
+  // CJK brackets, punctuation, and fullwidth forms commonly have vert
+  // glyphs in CJK fonts (e.g. BIZ UDGothic, Source Han Sans).
+  return (cp >= 0x3000 && cp <= 0x303F) ||  // CJK Symbols & Punctuation
+         (cp >= 0x3099 && cp <= 0x309C) ||  // Combining marks, long vowel
+         (cp >= 0x30A0 && cp <= 0x30FF) ||  // Katakana (some have vert)
+         (cp >= 0xFF01 && cp <= 0xFF60) ||  // Fullwidth forms
+         (cp == 0x2014 || cp == 0x2015 || cp == 0x2026 || cp == 0x301C ||
+          cp == 0x30FC || cp == 0xFF5E);     // Dashes, ellipsis, wave dash
+}
+
 /// Characters that cannot appear at the start of a line in Japanese typesetting.
 inline bool isKinsokuHead(uint32_t cp) {
   // Closing brackets, punctuation, small kana, long vowel mark, etc.
+  // Includes all entries from zrn-ns plus CJK Compatibility closed brackets.
   return cp == 0x3001 || cp == 0x3002 ||  // 、。
          cp == 0xFF0C || cp == 0xFF0E ||  // ，
          cp == 0x300D || cp == 0x300F ||  // 」』
          cp == 0x3009 || cp == 0x300B ||  // 〉》
          cp == 0x3015 || cp == 0x3011 ||  // 〕】
          cp == 0xFF09 || cp == 0xFF3D ||  // ）］
+         cp == 0xFF5D ||                  // ｝
+         cp == 0x3017 || cp == 0x3019 ||  // 〗〙
+         cp == 0x301B ||                  // 〛
          cp == 0x301D ||                  // 〝
-         cp == 0x30FC ||                  // ー (chōonpu, long vowel mark)
+         cp == 0x30FC ||                  // ー (chōonpu)
          cp == 0x3041 || cp == 0x3043 ||  // ぁぃ
          cp == 0x3045 || cp == 0x3047 ||  // ぅぇ
          cp == 0x3049 ||                  // ぉ
@@ -115,7 +134,10 @@ inline bool isKinsokuTail(uint32_t cp) {
   return cp == 0x300C || cp == 0x300E ||  // 「『
          cp == 0x3008 || cp == 0x300A ||  // 〈《
          cp == 0x3014 || cp == 0x3010 ||  // 〔【
-         cp == 0xFF08 || cp == 0xFF3B;    // （［
+         cp == 0xFF08 || cp == 0xFF3B ||  // （［
+         cp == 0xFF5B ||                  // ｛
+         cp == 0x3016 || cp == 0x3018 ||  // 〖〘
+         cp == 0x301A;                    // 〚
 }
 
 }  // namespace VerticalTextUtils

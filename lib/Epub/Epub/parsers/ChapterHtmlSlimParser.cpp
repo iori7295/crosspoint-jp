@@ -893,6 +893,11 @@ void XMLCALL ChapterHtmlSlimParser::startElement(void* userData, const XML_Char*
     if (self->embeddedStyle && cssStyle.hasTextAlign()) {
       headerBlockStyle.alignment = cssStyle.textAlign;
     }
+    // Draw separator line below h1/h2 headings
+    const int level = name[1] - '0';
+    if (level <= 2) {
+      headerBlockStyle.drawSeparatorBelow = true;
+    }
     const auto accumulated =
         self->blockStyleStack.back().getCombinedBlockStyle(headerBlockStyle, BlockStyle::CombineAxis::Horizontal);
     self->blockStyleStack.push_back(accumulated);

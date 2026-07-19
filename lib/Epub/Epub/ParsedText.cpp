@@ -541,12 +541,31 @@ int ParsedText::resolveFirstLineIndent(const bool isFirstLine, const GfxRenderer
   return 0;
 }
 // Consumes data to minimize memory usage
+
+/// When neither CSS text-indent nor the firstLineIndent toggle is configured,
+/// insert a visible Em Space (U+2003) at the start of the paragraph so the
+/// first line is visually distinguishable from surrounding text.  This mirrors
+/// zrn-ns behaviour which provides a fallback indent for EPUBs without any
+/// explicit indent (common in Japanese Aozora Bunko conversions).
+void ParsedText::applyParagraphIndent() {
+  if (words.empty()) return;
+  if (firstLineIndent || blockStyle.textIndentDefined) {
+    // User toggle or CSS already handles indent — do nothing.
+    return;
+  }
+  if (blockStyle.alignment == CssTextAlign::Justify || blockStyle.alignment == CssTextAlign::Left) {
+    words.front().insert(0, "\xe2\x80\x83");  // U+2003 EM SPACE (UTF-8)
+  }
+}
+
 void ParsedText::layoutAndExtractLines(const GfxRenderer& renderer, const int fontId, const uint16_t viewportWidth,
                                        const std::function<void(std::shared_ptr<TextBlock>)>& processLine,
                                        const bool includeLastLine, const bool isVertical) {
   if (words.empty()) {
     return;
   }
+
+  applyParagraphIndent();
 
   // Per-paragraph RTL auto-detection: only when CSS/HTML didn't explicitly set direction.
   // Explicit dir="ltr" must be respected and not overridden by content heuristic.

@@ -94,6 +94,25 @@ void TextBlock::render(const GfxRenderer& renderer, const int fontId, const int 
       renderer.drawLine(wordX, underlineY, wordX + underlineWidth, underlineY, true);
     }
   }
+
+  // Full-width separator below h1/h2 headings
+  if (!scanning && blockStyle.drawSeparatorBelow && !blockStyle.isRtl && !words.empty()) {
+    const int firstWordX = wordXpos.empty() ? x : wordXpos[0] + x;
+    const int lastWordEnd = renderer.getTextWidth(fontId, words.back().c_str(), wordStyles.back());
+    const int lastWordX = wordXpos.empty() ? x : wordXpos.back() + x;
+    // Draw from the first word left edge to the last word right edge
+    int sepX = firstWordX;
+    int sepW = lastWordX + lastWordEnd - firstWordX;
+    // On the first line of the block, draw below the ascender line
+    const int firstAscender = renderer.getFontAscenderSize(fontId);
+    // Find the first visible word's Y (could be SUP/SUB adjusted)
+    int firstVisibleY = y;
+    const auto firstStyle = words.empty() ? EpdFontFamily::REGULAR : wordStyles[0];
+    if ((firstStyle & EpdFontFamily::SUP) != 0) firstVisibleY -= firstAscender * 2 / 5;
+    else if ((firstStyle & EpdFontFamily::SUB) != 0) firstVisibleY += firstAscender / 4;
+    const int sepY = firstVisibleY + firstAscender + 3;
+    renderer.drawLine(sepX, sepY, sepX + sepW, sepY, true);
+  }
 }
 
 bool TextBlock::hasRuby() const {
