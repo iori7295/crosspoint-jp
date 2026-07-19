@@ -476,11 +476,35 @@ void ParsedText::addWord(std::string word, const EpdFontFamily::Style fontStyle,
 void ParsedText::addWord(std::string word, const EpdFontFamily::Style fontStyle,
                          const VerticalTextUtils::VerticalBehavior vBehavior, const bool underline,
                          const bool attachToPrevious) {
+  size_t oldSize = words.size();
   addWord(std::move(word), fontStyle, underline, attachToPrevious);
+  size_t newSize = words.size();
+
   if (wordVerticalBehaviors.capacity() == 0) {
     wordVerticalBehaviors.reserve(800);
   }
-  wordVerticalBehaviors.push_back(vBehavior);
+
+  // Fill any gap (e.g. <li> bullets that called addWord without behavior)
+  while (wordVerticalBehaviors.size() < oldSize) {
+    wordVerticalBehaviors.push_back(VerticalTextUtils::VerticalBehavior::Upright);
+  }
+
+  for (size_t i = oldSize; i < newSize; ++i) {
+    auto behavior = vBehavior;
+    // When a word was flagged Sideways, check every codepoint: if any is
+    // CJK (>= U+2E80) the word is actually Upright.  Only pure Latin/
+    // digit/ASCII-symbol words stay Sideways.
+    if (behavior == VerticalTextUtils::VerticalBehavior::Sideways) {
+      const auto* ptr = reinterpret_cast<const unsigned char*>(words[i].c_str());
+      while (*ptr) {
+        if (utf8NextCodepoint(&ptr) >= 0x2E80) {
+          behavior = VerticalTextUtils::VerticalBehavior::Upright;
+          break;
+        }
+      }
+    }
+    wordVerticalBehaviors.push_back(behavior);
+  }
 }
 
 void ParsedText::setRubyForLastWord(const std::string& ruby) {
@@ -1051,7 +1075,7 @@ bool ParsedText::hyphenateWordAtIndex(const size_t wordIndex, const int availabl
   }
   if (!wordVerticalBehaviors.empty()) {
     wordVerticalBehaviors.insert(wordVerticalBehaviors.begin() + wordIndex + 1,
-                                  VerticalTextUtils::VerticalBehavior::Upright);
+                                  wordVerticalBehaviors[wordIndex]);
   }
 
   // Continuation flag handling after splitting a word into prefix + remainder.

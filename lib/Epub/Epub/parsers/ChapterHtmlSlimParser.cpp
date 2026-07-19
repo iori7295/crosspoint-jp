@@ -19,7 +19,7 @@
 #include "Epub/htmlEntities.h"
 
 // Minimum file size (in bytes) to show indexing popup - smaller chapters don't benefit from it
-constexpr size_t MIN_SIZE_FOR_POPUP = 10 * 1024;  // 10KB
+constexpr size_t MIN_SIZE_FOR_POPUP = 0;
 constexpr size_t PARSE_BUFFER_SIZE = 1024;
 
 // Hard cap on the number of anchor IDs recorded per chapter. Legitimate navigation
