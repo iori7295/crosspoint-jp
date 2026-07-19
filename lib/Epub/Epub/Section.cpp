@@ -18,7 +18,7 @@ constexpr uint8_t SECTION_FILE_VERSION = 101;
 // Minimum free heap required to attempt section building. If below this threshold,
 // the section build would likely OOM mid-way, leaving a corrupt cache file that
 // causes crashes on subsequent boot. Better to abort early and show an error.
-constexpr size_t MIN_FREE_HEAP_FOR_SECTION_BUILD = 50 * 1024;  // 50KB
+constexpr size_t MIN_FREE_HEAP_FOR_SECTION_BUILD = 20 * 1024;  // 20KB (FrameBufferLoan provides 52KB scratch)
 constexpr uint32_t HEADER_SIZE = sizeof(uint8_t) + sizeof(int) + sizeof(float) + sizeof(bool) + sizeof(uint8_t) +
                                  sizeof(uint16_t) + sizeof(uint16_t) + sizeof(uint16_t) + sizeof(bool) + sizeof(bool) +
                                  sizeof(uint8_t) + sizeof(bool) + sizeof(bool) + sizeof(uint8_t) +  // charSpacing
@@ -231,7 +231,7 @@ bool Section::createSectionFile(const int fontId, const float lineCompression, c
   // heap is marginal to avoid a low-heap bailout that leaves a zero-page cache
   // and forces rebuild on every navigation to this spine item.
   if (fileSize > 0 && localPath.find("nav.") != std::string::npos &&
-      ESP.getFreeHeap() < MIN_FREE_HEAP_FOR_SECTION_BUILD * 2) {
+      ESP.getFreeHeap() < MIN_FREE_HEAP_FOR_SECTION_BUILD + 10 * 1024) {
     LOG_DBG("SCT", "Navigation section with marginal heap (%u), creating empty section",
             ESP.getFreeHeap());
     if (!Storage.openFileForWrite("SCT", filePath, file)) {

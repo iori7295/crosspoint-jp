@@ -43,7 +43,7 @@ constexpr size_t MAX_RULES = 1500;
 
 // Minimum free heap required to apply CSS during rendering
 // If below this threshold, we skip CSS to avoid display artifacts.
-constexpr size_t MIN_FREE_HEAP_FOR_CSS = 48 * 1024;
+constexpr size_t MIN_FREE_HEAP_FOR_CSS = 24 * 1024;  // 24KB (was 48KB)
 
 // Maximum length for a single selector string
 // Prevents parsing of extremely long or malformed selectors
