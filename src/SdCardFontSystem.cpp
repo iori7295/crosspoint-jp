@@ -13,11 +13,21 @@ static uint8_t fontSizeEnumFromSettings(bool isVertical) {
   return e;
 }
 
-// Small/annotation size: one step below the body size, clamped to SMALL.
+static uint8_t headingSizeEnum(bool isVertical) {
+  uint8_t body = fontSizeEnumFromSettings(isVertical);
+  return (body < CrossPointSettings::EXTRA_LARGE)
+             ? static_cast<uint8_t>(body + 1)
+             : static_cast<uint8_t>(CrossPointSettings::EXTRA_LARGE);
+}
+
 static uint8_t smallSizeEnum(bool isVertical) {
   uint8_t body = fontSizeEnumFromSettings(isVertical);
   return (body > 0) ? static_cast<uint8_t>(body - 1) : 0;
 }
+
+static constexpr uint8_t tableSizeEnum() { return CrossPointSettings::TABLE_SIZE; }
+static constexpr uint8_t rubySizeEnum() { return CrossPointSettings::RUBY_SIZE; }
+static constexpr uint8_t footnoteSizeEnum() { return CrossPointSettings::FOOTNOTE_SIZE; }
 
 // Load one size for the given family.  Returns true on success.
 static bool loadOneSize(SdCardFontManager& mgr, GfxRenderer& renderer,
@@ -28,6 +38,20 @@ static bool loadOneSize(SdCardFontManager& mgr, GfxRenderer& renderer,
     return false;
   }
   LOG_DBG("SDFS", "Loaded %s font (enum=%u) for %s", label, sizeEnum, family.name.c_str());
+  return true;
+}
+
+static bool loadReaderRoleSet(SdCardFontManager& mgr, GfxRenderer& renderer,
+                              const SdCardFontFamilyInfo& family, bool isVertical) {
+  const uint8_t body = fontSizeEnumFromSettings(isVertical);
+  const uint8_t small = smallSizeEnum(isVertical);
+  const uint8_t heading = headingSizeEnum(isVertical);
+  if (!loadOneSize(mgr, renderer, family, body, "body")) return false;
+  loadOneSize(mgr, renderer, family, small, "small");
+  loadOneSize(mgr, renderer, family, heading, "heading");
+  loadOneSize(mgr, renderer, family, tableSizeEnum(), "table");
+  loadOneSize(mgr, renderer, family, rubySizeEnum(), "ruby");
+  loadOneSize(mgr, renderer, family, footnoteSizeEnum(), "footnote");
   return true;
 }
 
@@ -42,12 +66,14 @@ void SdCardFontSystem::begin(GfxRenderer& renderer) {
   };
   SETTINGS.sdFontResolverCtx = this;
 
-  // Load the horizontal-direction SD font at startup (body + small).
+  // Load the horizontal-direction SD font at startup (body + auxiliaries).
   if (SETTINGS.horizontal.sdFontFamilyName[0] != '\0') {
     const auto* family = registry_.findFamily(SETTINGS.horizontal.sdFontFamilyName);
     if (family) {
-      loadOneSize(manager_, renderer, *family, fontSizeEnumFromSettings(false), "body");
-      loadOneSize(manager_, renderer, *family, smallSizeEnum(false), "small");
+      if (loadReaderRoleSet(manager_, renderer, *family, false)) {
+        lastLoadedFamily_[0] = family->name;
+        lastLoadedBodyEnum_[0] = fontSizeEnumFromSettings(false);
+      }
     } else {
       LOG_DBG("SDFS", "SD font family not found on card: %s (clearing)", SETTINGS.horizontal.sdFontFamilyName);
       SETTINGS.horizontal.sdFontFamilyName[0] = '\0';
@@ -69,24 +95,25 @@ void SdCardFontSystem::ensureLoaded(GfxRenderer& renderer, bool isVertical) {
   const char* wantedFamily = ds.sdFontFamilyName;
   const std::string& currentFamily = manager_.currentFamilyName();
   const uint8_t bodyEnum = fontSizeEnumFromSettings(isVertical);
-  const uint8_t smallEnum = smallSizeEnum(isVertical);
+  const int dirIndex = isVertical ? 1 : 0;
 
   if (wantedFamily[0] == '\0') {
     if (!currentFamily.empty()) {
       manager_.unloadAll(renderer);
     }
+    lastLoadedFamily_[dirIndex].clear();
+    lastLoadedBodyEnum_[dirIndex] = 0xFF;
     return;
   }
 
-  // If family hasn't changed and both sizes are already loaded, nothing to do.
-  if (manager_.isFamilyLoaded(wantedFamily)) {
-    // Both sizes are loaded only when the registry is clean and the font
-    // settings haven't changed.  We can't cheaply check "are both enums
-    // loaded" here without a manager API, so we just return early and
-    // rely on re-discovery / version mismatch below to trigger a reload.
-    if (!registryWasDirty) return;
-    // Fall through to re-load below when registry was dirty.
-  }
+  const bool needsReload =
+      registryWasDirty ||
+      !manager_.isFamilyLoaded(wantedFamily) ||
+      currentFamily != wantedFamily ||
+      lastLoadedFamily_[dirIndex] != wantedFamily ||
+      lastLoadedBodyEnum_[dirIndex] != bodyEnum;
+
+  if (!needsReload) return;
 
   // Family changed or registry was dirty — reload everything.
   if (!currentFamily.empty()) {
@@ -101,13 +128,15 @@ void SdCardFontSystem::ensureLoaded(GfxRenderer& renderer, bool isVertical) {
     return;
   }
 
-  if (!loadOneSize(manager_, renderer, *family, bodyEnum, "body")) {
-    LOG_ERR("SDFS", "Failed to load body font for %s (clearing)", wantedFamily);
+  if (!loadReaderRoleSet(manager_, renderer, *family, isVertical)) {
+    LOG_ERR("SDFS", "Failed to load reader role set for %s (clearing)", wantedFamily);
     ds.sdFontFamilyName[0] = '\0';
     SETTINGS.saveToFile();
     return;
   }
-  loadOneSize(manager_, renderer, *family, smallEnum, "small");
+
+  lastLoadedFamily_[dirIndex] = wantedFamily;
+  lastLoadedBodyEnum_[dirIndex] = bodyEnum;
 }
 
 int SdCardFontSystem::resolveFontId(const char* familyName, uint8_t fontSizeEnum) const {

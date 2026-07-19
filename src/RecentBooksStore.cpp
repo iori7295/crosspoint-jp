@@ -9,6 +9,7 @@
 #include <Xtc.h>
 
 #include <algorithm>
+#include <cctype>
 #include <iterator>
 
 namespace {
@@ -17,6 +18,26 @@ constexpr char RECENT_BOOKS_FILE_BIN[] = "/.crosspoint/recent.bin";
 constexpr char RECENT_BOOKS_FILE_JSON[] = "/.crosspoint/recent.json";
 constexpr char RECENT_BOOKS_FILE_BAK[] = "/.crosspoint/recent.bin.bak";
 constexpr int MAX_RECENT_BOOKS = 10;
+
+static std::string fallbackTitleFromPath(const std::string& path) {
+  size_t start = path.find_last_of('/');
+  start = (start == std::string::npos) ? 0 : start + 1;
+  size_t end = path.find_last_of('.');
+  if (end == std::string::npos || end <= start) end = path.size();
+  const std::string base = path.substr(start, end - start);
+  return base.empty() ? path : base;
+}
+
+static bool hasVisibleText(const std::string& s) {
+  for (unsigned char c : s) {
+    if (!std::isspace(c)) return true;
+  }
+  return false;
+}
+
+static std::string chooseTitle(const std::string& path, const std::string& metadataTitle) {
+  return hasVisibleText(metadataTitle) ? metadataTitle : fallbackTitleFromPath(path);
+}
 }  // namespace
 
 RecentBooksStore RecentBooksStore::instance;
@@ -34,7 +55,8 @@ void RecentBooksStore::addBook(const std::string& path, const std::string& title
   }
 
   // Add to front
-  recentBooks.insert(recentBooks.begin(), {path, title, author, coverBmpPath});
+  const std::string safeTitle = chooseTitle(path, title);
+  recentBooks.insert(recentBooks.begin(), {path, safeTitle, author, coverBmpPath});
 
   // Trim to max size
   if (recentBooks.size() > MAX_RECENT_BOOKS) {
@@ -50,7 +72,7 @@ void RecentBooksStore::updateBook(const std::string& path, const std::string& ti
       std::find_if(recentBooks.begin(), recentBooks.end(), [&](const RecentBook& book) { return book.path == path; });
   if (it != recentBooks.end()) {
     RecentBook& book = *it;
-    book.title = title;
+    book.title = chooseTitle(path, title);
     book.author = author;
     book.coverBmpPath = coverBmpPath;
     saveToFile();
@@ -112,17 +134,19 @@ RecentBook RecentBooksStore::getDataFromBook(std::string path) const {
   if (FsHelpers::hasEpubExtension(lastBookFileName)) {
     Epub epub(path, "/.crosspoint");
     epub.load(false, true);
-    return RecentBook{path, epub.getTitle(), epub.getAuthor(), epub.getThumbBmpPath()};
+    const std::string title = chooseTitle(path, epub.getTitle());
+    return RecentBook{path, title, epub.getAuthor(), epub.getThumbBmpPath()};
   } else if (FsHelpers::hasXtcExtension(lastBookFileName)) {
     // Handle XTC file
     Xtc xtc(path, "/.crosspoint");
     if (xtc.load()) {
-      return RecentBook{path, xtc.getTitle(), xtc.getAuthor(), xtc.getThumbBmpPath()};
+      const std::string title = chooseTitle(path, xtc.getTitle());
+      return RecentBook{path, title, xtc.getAuthor(), xtc.getThumbBmpPath()};
     }
   } else if (FsHelpers::hasTxtExtension(lastBookFileName) || FsHelpers::hasMarkdownExtension(lastBookFileName)) {
-    return RecentBook{path, lastBookFileName, "", ""};
+    return RecentBook{path, fallbackTitleFromPath(path), "", ""};
   }
-  return RecentBook{path, "", "", ""};
+  return RecentBook{path, fallbackTitleFromPath(path), "", ""};
 }
 
 bool RecentBooksStore::loadFromFile() {

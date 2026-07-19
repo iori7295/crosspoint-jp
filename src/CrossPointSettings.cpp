@@ -440,39 +440,46 @@ int CrossPointSettings::getBuiltInReaderFontId(const bool isVertical) const {
 
 int CrossPointSettings::getTableFontId(const bool isVertical) const {
   const auto& ds = isVertical ? vertical : horizontal;
-  const uint8_t tableSize = (ds.fontSize > SMALL) ? static_cast<uint8_t>(ds.fontSize - 1) : SMALL;
   if (ds.sdFontFamilyName[0] != '\0' && sdFontIdResolver) {
-    int id = sdFontIdResolver(sdFontResolverCtx, ds.sdFontFamilyName, tableSize);
+    int id = sdFontIdResolver(sdFontResolverCtx, ds.sdFontFamilyName, TABLE_SIZE);
     if (id != 0) return id;
   }
   switch (ds.fontFamily) {
     case NOTOSERIF:
-    default: {
-      switch (tableSize) {
-        case SMALL:
-        default:
-          return NOTOSERIF_12_FONT_ID;
-        case MEDIUM:
-          return NOTOSERIF_14_FONT_ID;
-        case LARGE:
-          return NOTOSERIF_16_FONT_ID;
-        case EXTRA_LARGE:
-          return NOTOSERIF_18_FONT_ID;
-      }
-    }
-    case NOTOSANS: {
-      switch (tableSize) {
-        case SMALL:
-        default:
-          return NOTOSANS_12_FONT_ID;
-        case MEDIUM:
-          return NOTOSANS_14_FONT_ID;
-        case LARGE:
-          return NOTOSANS_16_FONT_ID;
-        case EXTRA_LARGE:
-          return NOTOSANS_18_FONT_ID;
-      }
-    }
+    default:
+      return NOTOSERIF_12_FONT_ID;
+    case NOTOSANS:
+      return NOTOSANS_12_FONT_ID;
+  }
+}
+
+int CrossPointSettings::getRubyFontId(const bool isVertical) const {
+  const auto& ds = isVertical ? vertical : horizontal;
+  if (ds.sdFontFamilyName[0] != '\0' && sdFontIdResolver) {
+    int id = sdFontIdResolver(sdFontResolverCtx, ds.sdFontFamilyName, RUBY_SIZE);
+    if (id != 0) return id;
+  }
+  switch (ds.fontFamily) {
+    case NOTOSERIF:
+    default:
+      return NOTOSERIF_12_FONT_ID;
+    case NOTOSANS:
+      return NOTOSANS_12_FONT_ID;
+  }
+}
+
+int CrossPointSettings::getFootnoteFontId(const bool isVertical) const {
+  const auto& ds = isVertical ? vertical : horizontal;
+  if (ds.sdFontFamilyName[0] != '\0' && sdFontIdResolver) {
+    int id = sdFontIdResolver(sdFontResolverCtx, ds.sdFontFamilyName, FOOTNOTE_SIZE);
+    if (id != 0) return id;
+  }
+  switch (ds.fontFamily) {
+    case NOTOSERIF:
+    default:
+      return NOTOSERIF_12_FONT_ID;
+    case NOTOSANS:
+      return NOTOSANS_12_FONT_ID;
   }
 }
 

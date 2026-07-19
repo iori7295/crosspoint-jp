@@ -11,7 +11,7 @@
 
 SdCardFontManager::~SdCardFontManager() {
   for (auto& lf : loaded_) {
-    delete lf.font;
+    if (lf.ownsFont) delete lf.font;
   }
 }
 
@@ -31,7 +31,7 @@ int SdCardFontManager::computeFontId(uint32_t contentHash, const char* familyNam
   return id != 0 ? id : 1;  // 0 is reserved as "not found" sentinel
 }
 
-// Map fontSizeEnum (0-3) to the target point size used for "closest" matching.
+// Map fontSizeEnum / role enum to the target point size used for "closest" matching.
 // Must match the mapping in SdCardFontFamilyInfo::findClosestReaderSize.
 uint8_t SdCardFontManager::targetPointSize(uint8_t fontSizeEnum) {
   switch (fontSizeEnum) {
@@ -39,6 +39,9 @@ uint8_t SdCardFontManager::targetPointSize(uint8_t fontSizeEnum) {
     case 1:  return 14;   // MEDIUM
     case 2:  return 16;   // LARGE
     case 3:  return 18;   // EXTRA_LARGE
+    case 4:  return 10;   // TABLE_SIZE
+    case 5:  return 8;    // RUBY_SIZE
+    case 6:  return 10;   // FOOTNOTE_SIZE
     default: return 14;
   }
 }
@@ -68,6 +71,21 @@ bool SdCardFontManager::loadFamily(const SdCardFontFamilyInfo& family, GfxRender
     return false;
   }
 
+  // If another role already resolved to the same physical point size, alias it
+  // instead of loading/registering the same .cpfont twice.
+  for (const auto& lf : loaded_) {
+    if (lf.size == selected->pointSize) {
+      loaded_.push_back({lf.font, lf.fontId, lf.size, fontSizeEnum, false});
+      loadedFamilyName_ = family.name;
+      if (loaded_.size() == 1 || fontSizeEnum == 1) {
+        loadedPointSize_ = selected->pointSize;
+      }
+      LOG_DBG("SDMGR", "Aliased %s size=%u pt to existing id=%d (enum=%u) [%zu total roles]",
+              selected->path.c_str(), selected->pointSize, lf.fontId, fontSizeEnum, loaded_.size());
+      return true;
+    }
+  }
+
   auto* font = new (std::nothrow) SdCardFont();
   if (!font) {
     LOG_ERR("SDMGR", "Failed to allocate SdCardFont for %s", selected->path.c_str());
@@ -91,7 +109,7 @@ bool SdCardFontManager::loadFamily(const SdCardFontFamilyInfo& family, GfxRender
   EpdFontFamily fontFamily(font->getEpdFont(0), font->getEpdFont(1), font->getEpdFont(2), font->getEpdFont(3));
   renderer.insertFont(fontId, fontFamily);
 
-  loaded_.push_back({font, fontId, selected->pointSize, fontSizeEnum});
+  loaded_.push_back({font, fontId, selected->pointSize, fontSizeEnum, true});
   loadedFamilyName_ = family.name;
 
   // Keep body (primary) size metadata in the dedicated field for backward compat.
@@ -108,9 +126,13 @@ bool SdCardFontManager::loadFamily(const SdCardFontFamilyInfo& family, GfxRender
 
 void SdCardFontManager::unloadAll(GfxRenderer& renderer) {
   renderer.clearSdCardFonts();
+  std::vector<int> removedIds;
   for (auto& lf : loaded_) {
-    renderer.removeFont(lf.fontId);
-    delete lf.font;
+    if (std::find(removedIds.begin(), removedIds.end(), lf.fontId) == removedIds.end()) {
+      renderer.removeFont(lf.fontId);
+      removedIds.push_back(lf.fontId);
+    }
+    if (lf.ownsFont) delete lf.font;
   }
   loaded_.clear();
   loadedFamilyName_.clear();
@@ -124,6 +146,17 @@ int SdCardFontManager::getFontId(const std::string& familyName, uint8_t fontSize
   int slot = findSlotByEnum(fontSizeEnum);
   if (slot >= 0) return loaded_[slot].fontId;
 
-  // Fall back to the body size (loaded with enum=1 / MEDIUM, or the first slot).
-  return loaded_.front().fontId;
+  // Otherwise resolve to the closest loaded physical point size.
+  const uint8_t target = targetPointSize(fontSizeEnum);
+  const LoadedFont* best = &loaded_.front();
+  int bestDiff = INT_MAX;
+  for (const auto& lf : loaded_) {
+    const int diff = (lf.size > target) ? static_cast<int>(lf.size - target)
+                                        : static_cast<int>(target - lf.size);
+    if (diff < bestDiff) {
+      bestDiff = diff;
+      best = &lf;
+    }
+  }
+  return best->fontId;
 }

@@ -107,6 +107,13 @@ class CrossPointSettings {
   static constexpr uint8_t BUILTIN_FONT_COUNT = FONT_FAMILY_COUNT;
   // Font size options
   enum FONT_SIZE { SMALL = 0, MEDIUM = 1, LARGE = 2, EXTRA_LARGE = 3, FONT_SIZE_COUNT };
+  // Internal resolver-only size roles for SD-card Japanese layout.
+  // DO NOT persist these; only used when resolving auxiliary roles against
+  // .cpfont files. Keep FONT_SIZE_COUNT unchanged for settings compatibility.
+  static constexpr uint8_t TABLE_SIZE = FONT_SIZE_COUNT + 0;
+  static constexpr uint8_t RUBY_SIZE = FONT_SIZE_COUNT + 1;
+  static constexpr uint8_t FOOTNOTE_SIZE = FONT_SIZE_COUNT + 2;
+  static constexpr uint8_t SD_FONT_ROLE_COUNT = FONT_SIZE_COUNT + 3;
   enum LINE_COMPRESSION { TIGHT = 0, NORMAL = 1, WIDE = 2, LINE_COMPRESSION_COUNT };
   enum PARAGRAPH_ALIGNMENT {
     JUSTIFIED = 0,
@@ -322,6 +329,8 @@ class CrossPointSettings {
   int getReaderFontId(bool isVertical = false) const;
   int getHeadingFontId(int headingLevel, bool isVertical = false) const;
   int getTableFontId(bool isVertical = false) const;
+  int getRubyFontId(bool isVertical = false) const;
+  int getFootnoteFontId(bool isVertical = false) const;
   int getBuiltInReaderFontId(bool isVertical = false) const;
 
   // If count_only is true, returns the number of settings items that would be written.

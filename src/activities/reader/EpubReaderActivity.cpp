@@ -624,7 +624,7 @@ void EpubReaderActivity::onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction 
           uint16_t backupPageCount = section->pageCount;
           section.reset();
           epub->clearCache();
-          TextBlock::rubyFontId = SETTINGS.getTableFontId(verticalMode);
+          TextBlock::rubyFontId = SETTINGS.getRubyFontId(verticalMode);
           epub->setupCacheDir();
           if (!saveProgress(backupSpine, backupPage, backupPageCount)) {
             LOG_ERR("ERS", "Failed to save progress before cache clear");
@@ -1071,7 +1071,7 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
   const bool needsTextGrayscale = SETTINGS.getDirectionSettings(verticalMode).textAntiAliasing;
 
   // Ensure ruby font is set for the rendering pass.
-  TextBlock::rubyFontId = SETTINGS.getTableFontId(verticalMode);
+  TextBlock::rubyFontId = SETTINGS.getRubyFontId(verticalMode);
 
   // Apply vertical character spacing from direction settings.
   renderer.setVerticalCharSpacing(SETTINGS.getDirectionSettings(verticalMode).charSpacing);

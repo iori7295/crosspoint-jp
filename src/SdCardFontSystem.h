@@ -4,6 +4,7 @@
 #include <SdCardFontRegistry.h>
 
 #include <atomic>
+#include <string>
 
 class GfxRenderer;
 
@@ -49,6 +50,8 @@ class SdCardFontSystem {
   SdCardFontRegistry registry_;
   SdCardFontManager manager_;
   std::atomic<bool> registryDirty_{false};
+  std::string lastLoadedFamily_[2];
+  uint8_t lastLoadedBodyEnum_[2] = {0xFF, 0xFF};
 };
 
 // Global SD card font system instance (defined in main.cpp).

@@ -5,6 +5,7 @@
 #include <Logging.h>
 #include <Serialization.h>
 
+#include <algorithm>
 #include <cstring>
 
 int TextBlock::rubyFontId = -1;
@@ -19,9 +20,15 @@ void TextBlock::render(const GfxRenderer& renderer, const int fontId, const int 
               (uint32_t)wordXpos.size(), (uint32_t)wordYpos.size());
       return;
     }
+    const int logicalMax = std::max<int>(renderer.getDisplayWidth(), renderer.getDisplayHeight());
+    const int baseLineHeight = renderer.getLineHeight(fontId);
+    const int rubyLineHeight = (rubyFontId >= 0) ? renderer.getLineHeight(rubyFontId) : 0;
+    const int lowerClip = -std::max(baseLineHeight, rubyLineHeight) * 2;
     for (size_t i = 0; i < words.size(); i++) {
       const int wordX = wordXpos.empty() ? x : wordXpos[i] + x;
       const int wordY = (i < wordYpos.size()) ? y + wordYpos[i] : y;
+      if (wordY > logicalMax || wordY < lowerClip) continue;
+      if (wordX > logicalMax || wordX < -logicalMax / 2) continue;
 
       const auto vb = (i < wordVerticalBehaviors.size())
                           ? wordVerticalBehaviors[i]
@@ -35,7 +42,11 @@ void TextBlock::render(const GfxRenderer& renderer, const int fontId, const int 
 
       if (i < rubyTexts.size() && !rubyTexts[i].empty() && rubyFontId >= 0) {
         const int rubyX = wordX + renderer.getLineHeight(fontId);
-        renderer.drawTextVertical(rubyFontId, rubyX, wordY, rubyTexts[i].c_str(), true, EpdFontFamily::REGULAR);
+        if (wordY <= logicalMax && wordY >= lowerClip &&
+            rubyX <= logicalMax && rubyX >= -logicalMax / 2) {
+          renderer.drawTextVertical(rubyFontId, rubyX, wordY, rubyTexts[i].c_str(), true,
+                                    EpdFontFamily::REGULAR);
+        }
       }
     }
     return;

@@ -1039,7 +1039,16 @@ void SdCardFont::mergeIntoAdvanceTable(uint8_t styleIdx, const AdvanceEntry* sor
   uint32_t mergedCap = oldSize + newCount;
   if (mergedCap > ADVANCE_CACHE_LIMIT) mergedCap = ADVANCE_CACHE_LIMIT;
 
-  AdvanceEntry* merged = new (std::nothrow) AdvanceEntry[mergedCap];
+  AdvanceEntry* merged = nullptr;
+  uint32_t attemptCap = mergedCap;
+  while (!merged && attemptCap > oldSize) {
+    merged = new (std::nothrow) AdvanceEntry[attemptCap];
+    if (!merged) {
+      const uint32_t extra = attemptCap - oldSize;
+      if (extra <= 8) break;
+      attemptCap = oldSize + extra / 2;
+    }
+  }
   if (!merged) {
     LOG_ERR("SDCF", "mergeIntoAdvanceTable: alloc failed (%u entries) style %u", mergedCap, styleIdx);
     return;
@@ -1048,7 +1057,7 @@ void SdCardFont::mergeIntoAdvanceTable(uint8_t styleIdx, const AdvanceEntry* sor
   const AdvanceEntry* a = advanceTable_[styleIdx];
   const AdvanceEntry* b = sortedNew;
   uint32_t i = 0, j = 0, k = 0;
-  while (k < mergedCap && (i < oldSize || j < newCount)) {
+  while (k < attemptCap && (i < oldSize || j < newCount)) {
     if (i < oldSize && (j >= newCount || a[i].codepoint <= b[j].codepoint)) {
       merged[k++] = a[i++];
     } else {

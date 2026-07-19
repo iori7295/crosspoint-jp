@@ -1655,6 +1655,21 @@ int GfxRenderer::getTextAdvanceX(const int fontId, const char* text, EpdFontFami
           // adjacent glyphs or corrupt line-break decisions.
           const EpdGlyph* rep = font.getGlyph(REPLACEMENT_GLYPH, style);
           if (rep) advFP = rep->advanceX;
+          if (advFP == 0) {
+            const EpdGlyph* q = font.getGlyph('?', EpdFontFamily::REGULAR);
+            if (q) advFP = q->advanceX;
+          }
+          if (advFP == 0) {
+            const EpdGlyph* ideographicSpace = font.getGlyph(0x3000, EpdFontFamily::REGULAR);
+            if (ideographicSpace) advFP = ideographicSpace->advanceX;
+          }
+          if (advFP == 0) {
+            const EpdGlyph* asciiSpace = font.getGlyph(' ', EpdFontFamily::REGULAR);
+            if (asciiSpace) advFP = asciiSpace->advanceX;
+          }
+          if (advFP == 0) {
+            advFP = fp4::fromPixel(getLineHeight(fontId));
+          }
         }
       }
       widthFP += isSupSub ? (advFP + 1) / 2 : advFP;

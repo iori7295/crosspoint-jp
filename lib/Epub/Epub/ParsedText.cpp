@@ -708,96 +708,39 @@ void ParsedText::layoutVerticalColumns(
   // Compute first-line indent for vertical mode
   const int firstLineIndentVal = resolveFirstLineIndent(true, renderer, fontId);
 
-  // Heap guard: same thresholds as horizontal layout. When heap is too
-  // fragmented, skip non-essential processing (kinsoku, ruby) to avoid
-  // vector reallocation failures in the 2nd pass.
   const bool lowHeap =
       ESP.getFreeHeap() < MIN_FREE_HEAP_FOR_HYPHENATION ||
       static_cast<size_t>(ESP.getMaxAllocHeap()) < MIN_MAX_ALLOC_FOR_HYPHENATION;
 
-  // Helper: get the first codepoint of a word string
   auto firstCp = [](const std::string& w) -> uint32_t {
     const auto* p = reinterpret_cast<const unsigned char*>(w.c_str());
     return utf8NextCodepoint(&p);
   };
 
-  // First pass: compute column boundaries without emitting.
-  // NOTE: must use a `while` loop with explicit `i = breakAt` because the
-  // kinsoku backtracking changes the column-break position.  The old `for`
-  // + `continue` caused an infinite loop: when kinsoku pulled breakAt back
-  // past columnStart, currentY stayed large for the same i on every
-  // iteration → same overflow → same push_back → columnEnds grew until
-  // bad_alloc.  Setting i = breakAt directly after the boundary guarantees
-  // forward progress.
-  std::vector<size_t> columnEnds;
-  {
-    size_t columnStart = 0;
-    int currentY = firstLineIndentVal;
-    size_t i = 0;
-    while (i < words.size()) {
-      // Single word taller than the whole column: force it into its own column
-      // even when it is the first word on the line (i == columnStart).
-      if (wordHeights[i] > columnHeight) {
-        columnEnds.push_back(i + 1);
-        columnStart = i + 1;
-        currentY = 0;
-        i++;
-        continue;
-      }
-      if (currentY + wordHeights[i] > columnHeight && i > columnStart) {
-        size_t breakAt = i;
-        if (!lowHeap) {
-          while (breakAt > columnStart + 1 && VerticalTextUtils::isKinsokuHead(firstCp(words[breakAt]))) {
-            breakAt--;
-          }
-          if (breakAt > columnStart + 1 && VerticalTextUtils::isKinsokuTail(firstCp(words[breakAt - 1]))) {
-            breakAt--;
-          }
-        }
-        columnEnds.push_back(breakAt);
-        columnStart = breakAt;
-        currentY = 0;
-        i = breakAt;
-        continue;
-      }
-      currentY += wordHeights[i];
-      i++;
-    }
-    if (columnStart < words.size()) {
-      columnEnds.push_back(words.size());
-    }
-  }
-
-  // Determine how many columns to emit.
-  const size_t totalCols = columnEnds.size();
-  const size_t emitCols = (includeLastColumn || totalCols <= 1) ? totalCols : totalCols - 1;
-
-  // Second pass: emit columns up to emitCols.
+  // Streaming single-pass vertical column layout: emit columns inline as
+  // boundaries are found, instead of building a columnEnds vector first and
+  // then iterating.  This eliminates the columnEnds vector (~2KB for 1000
+  // words) and the second pass over words.
   bool isFirstColumn = true;
-  size_t emitStart = 0;
-  for (size_t i = 0; i < emitCols; i++) {
-    const size_t start = emitStart;
-    const size_t end = columnEnds[i];
+  size_t columnStart = 0;
+  size_t consumed = 0;
+  int currentY = firstLineIndentVal;
+  size_t i = 0;
+
+  auto emitColumn = [&](size_t start, size_t end) {
+    if (end <= start) return;
     std::vector<std::string> colWords(std::make_move_iterator(words.begin() + start),
                                       std::make_move_iterator(words.begin() + end));
     std::vector<int16_t> colYpos;
     std::vector<int16_t> colXpos;
     std::vector<EpdFontFamily::Style> colStyles(wordStyles.begin() + start, wordStyles.begin() + end);
     const size_t count = end - start;
+
     std::vector<std::string> colRubyTexts;
     if (!lowHeap && rubyTexts.size() >= end) {
-      colRubyTexts.reserve(count);
       colRubyTexts.assign(rubyTexts.begin() + start, rubyTexts.begin() + end);
     } else if (!lowHeap) {
       colRubyTexts.resize(count);
-    }
-    colYpos.reserve(count);
-    colXpos.resize(count, 0);
-
-    int y = isFirstColumn ? firstLineIndentVal : 0;
-    for (size_t j = start; j < end; j++) {
-      colYpos.push_back(static_cast<int16_t>(y));
-      y += wordHeights[j];
     }
 
     std::vector<VerticalTextUtils::VerticalBehavior> colBehaviors;
@@ -808,27 +751,73 @@ void ParsedText::layoutVerticalColumns(
                                  : VerticalTextUtils::VerticalBehavior::Upright);
     }
 
+    colYpos.reserve(count);
+    colXpos.resize(count, 0);
+    int y = isFirstColumn ? firstLineIndentVal : 0;
+    for (size_t j = start; j < end; j++) {
+      colYpos.push_back(static_cast<int16_t>(y));
+      y += wordHeights[j];
+    }
+
     processColumn(std::make_shared<TextBlock>(std::move(colWords), std::move(colXpos), std::move(colStyles),
-                                               std::vector<uint8_t>{}, std::vector<uint16_t>{}, blockStyle,
-                                               std::move(colYpos), true, std::move(colRubyTexts),
-                                               std::move(colBehaviors)));
-    isFirstColumn = false;
-    emitStart = end;
+                                              std::vector<uint8_t>{}, std::vector<uint16_t>{}, blockStyle,
+                                              std::move(colYpos), true, std::move(colRubyTexts),
+                                              std::move(colBehaviors)));
+  };
+
+  while (i < words.size()) {
+    if (wordHeights[i] > columnHeight && i == columnStart) {
+      emitColumn(columnStart, i);
+      columnStart = i;
+      currentY = wordHeights[i];
+      ++i;
+      continue;
+    }
+    if (currentY + wordHeights[i] > columnHeight && i > columnStart) {
+      size_t breakAt = i;
+      if (!lowHeap) {
+        while (breakAt > columnStart + 1 &&
+               breakAt < words.size() &&
+               VerticalTextUtils::isKinsokuHead(firstCp(words[breakAt]))) {
+          --breakAt;
+        }
+        if (breakAt > columnStart + 1 &&
+            VerticalTextUtils::isKinsokuTail(firstCp(words[breakAt - 1]))) {
+          --breakAt;
+        }
+      }
+      if (breakAt <= columnStart) {
+        breakAt = i;
+      }
+      emitColumn(columnStart, breakAt);
+      isFirstColumn = false;
+      consumed = breakAt;
+      columnStart = breakAt;
+      currentY = 0;
+      i = breakAt;
+      continue;
+    }
+    currentY += wordHeights[i];
+    ++i;
   }
 
-  // Erase consumed words.
-  if (emitStart > 0) {
-    words.erase(words.begin(), words.begin() + emitStart);
-    wordStyles.erase(wordStyles.begin(), wordStyles.begin() + emitStart);
-    wordContinues.erase(wordContinues.begin(), wordContinues.begin() + emitStart);
-    wordNoSpaceBefore.erase(wordNoSpaceBefore.begin(), wordNoSpaceBefore.begin() + emitStart);
-    wordIsFocusSuffix.erase(wordIsFocusSuffix.begin(), wordIsFocusSuffix.begin() + emitStart);
+  if (includeLastColumn && columnStart < words.size()) {
+    emitColumn(columnStart, words.size());
+    consumed = words.size();
+  }
+
+  if (consumed > 0) {
+    words.erase(words.begin(), words.begin() + consumed);
+    wordStyles.erase(wordStyles.begin(), wordStyles.begin() + consumed);
+    wordContinues.erase(wordContinues.begin(), wordContinues.begin() + consumed);
+    wordNoSpaceBefore.erase(wordNoSpaceBefore.begin(), wordNoSpaceBefore.begin() + consumed);
+    wordIsFocusSuffix.erase(wordIsFocusSuffix.begin(), wordIsFocusSuffix.begin() + consumed);
     if (!rubyTexts.empty()) {
-      const size_t rtConsumed = std::min(emitStart, static_cast<size_t>(rubyTexts.size()));
+      const size_t rtConsumed = std::min(consumed, static_cast<size_t>(rubyTexts.size()));
       rubyTexts.erase(rubyTexts.begin(), rubyTexts.begin() + rtConsumed);
     }
     if (!wordVerticalBehaviors.empty()) {
-      const size_t vbConsumed = std::min(emitStart, static_cast<size_t>(wordVerticalBehaviors.size()));
+      const size_t vbConsumed = std::min(consumed, static_cast<size_t>(wordVerticalBehaviors.size()));
       wordVerticalBehaviors.erase(wordVerticalBehaviors.begin(), wordVerticalBehaviors.begin() + vbConsumed);
     }
   }

@@ -46,7 +46,8 @@ class SdCardFontManager {
     SdCardFont* font;
     int fontId;
     uint8_t size;         // actual point size of the font file
-    uint8_t loadedFor;    // fontSizeEnum used when loading
+    uint8_t loadedFor;    // fontSizeEnum / role enum used when loading
+    bool ownsFont;        // false = alias sharing another slot's font
   };
   static int computeFontId(uint32_t contentHash, const char* familyName, uint8_t pointSize);
   static uint8_t targetPointSize(uint8_t fontSizeEnum);
