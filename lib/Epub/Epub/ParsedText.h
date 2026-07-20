@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 
+#include <VerticalTextUtils.h>
 #include "blocks/BlockStyle.h"
 #include "blocks/TextBlock.h"
 
@@ -18,6 +19,7 @@ class ParsedText {
   std::vector<bool> wordContinues;      // true = word attaches to previous with no break
   std::vector<bool> wordNoSpaceBefore;  // true = may break before token, but no synthetic space when joined
   std::vector<bool> wordIsFocusSuffix;  // true = token is the regular tail of a focus bold-prefix split
+  std::vector<std::string> rubyTexts;
   BlockStyle blockStyle;
   bool extraParagraphSpacing;
   bool hyphenationEnabled;
@@ -37,8 +39,9 @@ class ParsedText {
                                         std::vector<uint16_t>& wordWidths, std::vector<bool>& continuesVec,
                                         std::vector<bool>& noSpaceBeforeVec);
   std::vector<size_t> computeHyphenatedLineBreaks(const GfxRenderer& renderer, int fontId, int pageWidth,
-                                                  std::vector<uint16_t>& wordWidths, std::vector<bool>& continuesVec,
-                                                  std::vector<bool>& noSpaceBeforeVec);
+                                                   std::vector<uint16_t>& wordWidths, std::vector<bool>& continuesVec,
+                                                   std::vector<bool>& noSpaceBeforeVec,
+                                                   bool allowHyphenation = true);
   bool hyphenateWordAtIndex(size_t wordIndex, int availableWidth, const GfxRenderer& renderer, int fontId,
                             std::vector<uint16_t>& wordWidths, bool allowFallbackBreaks);
   void extractLine(size_t breakIndex, int pageWidth, const std::vector<uint16_t>& wordWidths,
@@ -47,6 +50,7 @@ class ParsedText {
                    const std::function<void(std::shared_ptr<TextBlock>)>& processLine, const GfxRenderer& renderer,
                    int fontId);
   std::vector<uint16_t> calculateWordWidths(const GfxRenderer& renderer, int fontId);
+  void applyParagraphIndent();
 
  public:
   explicit ParsedText(const bool extraParagraphSpacing, const bool hyphenationEnabled = false,
@@ -60,11 +64,17 @@ class ParsedText {
   ~ParsedText() = default;
 
   void addWord(std::string word, EpdFontFamily::Style fontStyle, bool underline = false, bool attachToPrevious = false);
+  void layoutVerticalColumns(const GfxRenderer& renderer, int fontId, uint16_t columnHeight,
+                             const std::function<void(std::shared_ptr<TextBlock>)>& processColumn,
+                             bool includeLastColumn = true);
+  void setRubyForLastWord(const std::string& ruby);
+  void setRubyForWordAt(size_t index, const std::string& ruby);
   void setBlockStyle(const BlockStyle& blockStyle) { this->blockStyle = blockStyle; }
   BlockStyle& getBlockStyle() { return blockStyle; }
   size_t size() const { return words.size(); }
   bool isEmpty() const { return words.empty(); }
   void layoutAndExtractLines(const GfxRenderer& renderer, int fontId, uint16_t viewportWidth,
                              const std::function<void(std::shared_ptr<TextBlock>)>& processLine,
-                             bool includeLastLine = true);
+                             bool includeLastLine = true,
+                             bool isVertical = false);
 };

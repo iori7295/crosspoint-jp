@@ -5,11 +5,52 @@
 #include <Logging.h>
 #include <Serialization.h>
 
+#include <algorithm>
 #include <cstring>
 
+int TextBlock::rubyFontId = -1;
+
 void TextBlock::render(const GfxRenderer& renderer, const int fontId, const int x, const int y) const {
-  // Focus annotations are optional: empty vectors mean no word in this block has a split.
-  // When present, they must be sized in lockstep with words[].
+  if (isVertical) {
+    if (words.size() != wordStyles.size() ||
+        (!wordXpos.empty() && words.size() != wordXpos.size()) ||
+        (!wordYpos.empty() && words.size() != wordYpos.size())) {
+      LOG_ERR("TXB", "Vertical render skipped: size mismatch (words=%u styles=%u xpos=%u ypos=%u)",
+              (uint32_t)words.size(), (uint32_t)wordStyles.size(),
+              (uint32_t)wordXpos.size(), (uint32_t)wordYpos.size());
+      return;
+    }
+    const int logicalMax = std::max<int>(renderer.getDisplayWidth(), renderer.getDisplayHeight());
+    const int baseLineHeight = renderer.getLineHeight(fontId);
+    const int rubyLineHeight = (rubyFontId >= 0) ? renderer.getLineHeight(rubyFontId) : 0;
+    const int lowerClip = -std::max(baseLineHeight, rubyLineHeight) * 2;
+    const int columnWidth = baseLineHeight;
+    for (size_t i = 0; i < words.size(); i++) {
+      const int wordX = wordXpos.empty() ? x : wordXpos[i] + x;
+      const int wordY = (i < wordYpos.size()) ? y + wordYpos[i] : y;
+      if (wordY > logicalMax || wordY < lowerClip) continue;
+      if (wordX > logicalMax || wordX < -logicalMax / 2) continue;
+
+      const auto vb = VerticalTextUtils::classifyVerticalBehavior(words[i]);
+
+      if (vb == VerticalTextUtils::VerticalBehavior::Sideways) {
+        renderer.drawTextSideways(fontId, wordX, wordY, words[i].c_str(), true, wordStyles[i], columnWidth);
+      } else {
+        renderer.drawTextVertical(fontId, wordX, wordY, words[i].c_str(), true, wordStyles[i]);
+      }
+
+      if (i < rubyTexts.size() && !rubyTexts[i].empty() && rubyFontId >= 0) {
+        const int rubyX = wordX - renderer.getLineHeight(fontId);
+        if (wordY <= logicalMax && wordY >= lowerClip &&
+            rubyX <= logicalMax && rubyX >= -logicalMax / 2) {
+          renderer.drawTextVertical(rubyFontId, rubyX, wordY, rubyTexts[i].c_str(), true,
+                                    EpdFontFamily::REGULAR);
+        }
+      }
+    }
+    return;
+  }
+
   const bool hasFocus = !wordFocusBoundary.empty();
   if (words.size() != wordXpos.size() || words.size() != wordStyles.size() ||
       (hasFocus && (words.size() != wordFocusBoundary.size() || words.size() != wordFocusSuffixX.size()))) {
@@ -28,10 +69,6 @@ void TextBlock::render(const GfxRenderer& renderer, const int fontId, const int 
         BidiUtils::detectParagraphLevel(words[i].c_str(), blockStyle.isRtl ? 1 : 0));
     const uint8_t boundary = hasFocus ? wordFocusBoundary[i] : 0;
 
-    // SUP/SUB shift the baseline passed to drawText; the glyph is also scaled 50% inside
-    // drawText, so these offsets are chosen relative to the full-size ascender:
-    //   SUP: raise by 40% of ascender — sits clearly above the cap-height
-    //   SUB: lower by 25% of ascender — descends below baseline without clashing with ascenders below
     int wordY = y;
     if ((currentStyle & EpdFontFamily::SUP) != 0) {
       wordY -= ascender * 2 / 5;
@@ -40,10 +77,6 @@ void TextBlock::render(const GfxRenderer& renderer, const int fontId, const int 
     }
 
     if (boundary > 0) {
-      // Focus split: draw bold prefix, then the regular suffix at a pre-computed x offset.
-      // The bold prefix is bounded to 9 codepoints by the clamp on targetBoldChars in
-      // ParsedText::addWord; 9 UTF-8 codepoints occupy at most 9 * 4 = 36 bytes, +1 for null = 37.
-      // suffixX is computed at cache-creation time to avoid font metric lookups at render time.
       static constexpr size_t MAX_FOCUS_PREFIX_BYTES = 9 * 4 + 1;
       char boldBuf[40];
       static_assert(sizeof(boldBuf) >= MAX_FOCUS_PREFIX_BYTES,
@@ -59,6 +92,14 @@ void TextBlock::render(const GfxRenderer& renderer, const int fontId, const int 
       renderer.drawText(fontId, wordX, wordY, words[i].c_str(), true, currentStyle, baseDir);
     }
 
+    if (i < rubyTexts.size() && !rubyTexts[i].empty() && rubyFontId >= 0) {
+      const int baseWidth = renderer.getTextAdvanceX(fontId, words[i].c_str(), currentStyle);
+      const int rubyWidth = renderer.getTextWidth(rubyFontId, rubyTexts[i].c_str(), EpdFontFamily::REGULAR);
+      const int rubyX = wordX + (baseWidth - rubyWidth) / 2;
+      const int rubyY = wordY - renderer.getLineHeight(rubyFontId) - 1;
+      renderer.drawText(rubyFontId, rubyX, rubyY, rubyTexts[i].c_str(), true, EpdFontFamily::REGULAR);
+    }
+
     if (!scanning && (currentStyle & EpdFontFamily::UNDERLINE) != 0) {
       const std::string& w = words[i];
       int underlineWidth = renderer.getTextWidth(fontId, w.c_str(), currentStyle, baseDir);
@@ -71,11 +112,31 @@ void TextBlock::render(const GfxRenderer& renderer, const int fontId, const int 
       renderer.drawLine(wordX, underlineY, wordX + underlineWidth, underlineY, true);
     }
   }
+
+  if (!scanning && blockStyle.drawSeparatorBelow && !blockStyle.isRtl && !words.empty()) {
+    const int firstWordX = wordXpos.empty() ? x : wordXpos[0] + x;
+    const int lastWordEnd = renderer.getTextWidth(fontId, words.back().c_str(), wordStyles.back());
+    const int lastWordX = wordXpos.empty() ? x : wordXpos.back() + x;
+    int sepX = firstWordX;
+    int sepW = lastWordX + lastWordEnd - firstWordX;
+    const int firstAscender = renderer.getFontAscenderSize(fontId);
+    int firstVisibleY = y;
+    const auto firstStyle = words.empty() ? EpdFontFamily::REGULAR : wordStyles[0];
+    if ((firstStyle & EpdFontFamily::SUP) != 0) firstVisibleY -= firstAscender * 2 / 5;
+    else if ((firstStyle & EpdFontFamily::SUB) != 0) firstVisibleY += firstAscender / 4;
+    const int sepY = firstVisibleY + firstAscender + 3;
+    renderer.drawLine(sepX, sepY, sepX + sepW, sepY, true);
+  }
+}
+
+bool TextBlock::hasRuby() const {
+  for (const auto& rt : rubyTexts) {
+    if (!rt.empty()) return true;
+  }
+  return false;
 }
 
 bool TextBlock::serialize(HalFile& file) const {
-  // Focus annotations are optional; vectors are either empty (no splits in this block)
-  // or sized in lockstep with words[].
   const bool hasFocus = !wordFocusBoundary.empty();
   if (words.size() != wordXpos.size() || words.size() != wordStyles.size() ||
       (hasFocus && (words.size() != wordFocusBoundary.size() || words.size() != wordFocusSuffixX.size()))) {
@@ -86,20 +147,16 @@ bool TextBlock::serialize(HalFile& file) const {
     return false;
   }
 
-  // Word data
   serialization::writePod(file, static_cast<uint16_t>(words.size()));
   for (const auto& w : words) serialization::writeString(file, w);
   for (auto x : wordXpos) serialization::writePod(file, x);
   for (auto s : wordStyles) serialization::writePod(file, s);
-  // Focus block: 1-byte presence flag, followed by per-word vectors only when present.
-  // Saves 3 bytes/word when focus reading is disabled or no word on this line was split.
   serialization::writePod(file, static_cast<uint8_t>(hasFocus ? 1 : 0));
   if (hasFocus) {
     for (auto b : wordFocusBoundary) serialization::writePod(file, b);
     for (auto sx : wordFocusSuffixX) serialization::writePod(file, sx);
   }
 
-  // Style (alignment + margins/padding/indent)
   serialization::writePod(file, blockStyle.alignment);
   serialization::writePod(file, blockStyle.textAlignDefined);
   serialization::writePod(file, blockStyle.marginTop);
@@ -115,6 +172,15 @@ bool TextBlock::serialize(HalFile& file) const {
   serialization::writePod(file, blockStyle.isRtl);
   serialization::writePod(file, blockStyle.directionDefined);
 
+  serialization::writePod(file, isVertical);
+  if (isVertical) {
+    for (auto y : wordYpos) serialization::writePod(file, y);
+  }
+
+  for (size_t i = 0; i < words.size(); i++) {
+    serialization::writeString(file, (i < rubyTexts.size()) ? rubyTexts[i] : std::string());
+  }
+
   return true;
 }
 
@@ -127,24 +193,19 @@ std::unique_ptr<TextBlock> TextBlock::deserialize(HalFile& file) {
   std::vector<uint16_t> wordFocusSuffixX;
   BlockStyle blockStyle;
 
-  // Word count
   serialization::readPod(file, wc);
 
-  // Sanity check: prevent allocation of unreasonably large vectors (max 10000 words per block)
   if (wc > 10000) {
     LOG_ERR("TXB", "Deserialization failed: word count %u exceeds maximum", wc);
     return nullptr;
   }
 
-  // Word data
   words.resize(wc);
   wordXpos.resize(wc);
   wordStyles.resize(wc);
   for (auto& w : words) serialization::readString(file, w);
   for (auto& x : wordXpos) serialization::readPod(file, x);
   for (auto& s : wordStyles) serialization::readPod(file, s);
-  // Focus block: presence flag, then vectors only if present. Empty vectors when absent
-  // signal "no splits in this block" to render() (zero per-word RAM cost).
   uint8_t hasFocus;
   serialization::readPod(file, hasFocus);
   if (hasFocus) {
@@ -154,7 +215,6 @@ std::unique_ptr<TextBlock> TextBlock::deserialize(HalFile& file) {
     for (auto& sx : wordFocusSuffixX) serialization::readPod(file, sx);
   }
 
-  // Style (alignment + margins/padding/indent)
   serialization::readPod(file, blockStyle.alignment);
   serialization::readPod(file, blockStyle.textAlignDefined);
   serialization::readPod(file, blockStyle.marginTop);
@@ -170,7 +230,20 @@ std::unique_ptr<TextBlock> TextBlock::deserialize(HalFile& file) {
   serialization::readPod(file, blockStyle.isRtl);
   serialization::readPod(file, blockStyle.directionDefined);
 
-  return std::unique_ptr<TextBlock>(new TextBlock(std::move(words), std::move(wordXpos), std::move(wordStyles),
-                                                  std::move(wordFocusBoundary), std::move(wordFocusSuffixX),
-                                                  blockStyle));
+  bool vertical = false;
+  serialization::readPod(file, vertical);
+  std::vector<int16_t> wordYpos;
+  if (vertical) {
+    wordYpos.resize(wc);
+    for (auto& y : wordYpos) serialization::readPod(file, y);
+  }
+
+  std::vector<std::string> rubyTexts(wc);
+  for (auto& rt : rubyTexts) serialization::readString(file, rt);
+
+  auto tb = new (std::nothrow) TextBlock(std::move(words), std::move(wordXpos), std::move(wordStyles),
+                                          std::move(wordFocusBoundary), std::move(wordFocusSuffixX),
+                                          blockStyle, std::move(wordYpos), vertical, std::move(rubyTexts));
+  if (!tb) return nullptr;
+  return std::unique_ptr<TextBlock>(tb);
 }

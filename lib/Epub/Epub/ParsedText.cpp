@@ -1,6 +1,7 @@
 #include "ParsedText.h"
 
 #include <BidiUtils.h>
+#include <Esp.h>
 #include <GfxRenderer.h>
 #include <Utf8.h>
 
@@ -13,8 +14,42 @@
 #include "hyphenation/Hyphenator.h"
 
 constexpr int MAX_COST = std::numeric_limits<int>::max();
+constexpr size_t MAX_DP_TOKENS = 750;
+constexpr size_t MIN_FREE_HEAP_FOR_HYPHENATION = 12 * 1024;
+constexpr size_t MIN_MAX_ALLOC_FOR_HYPHENATION = 6 * 1024;
 
 namespace {
+
+int countRenderableCodepoints(const std::string& word) {
+  int count = 0;
+  const auto* ptr = reinterpret_cast<const unsigned char*>(word.c_str());
+  while (*ptr) {
+    const uint32_t cp = utf8NextCodepoint(&ptr);
+    if (cp != 0) ++count;
+  }
+  return count > 0 ? count : 1;
+}
+
+bool isAsciiDigitsOnly(const std::string& word) {
+  if (word.empty()) return false;
+  const auto* ptr = reinterpret_cast<const unsigned char*>(word.c_str());
+  int count = 0;
+  while (*ptr) {
+    const uint32_t cp = utf8NextCodepoint(&ptr);
+    if (cp < '0' || cp > '9') return false;
+    ++count;
+    if (count > 2) return false;
+  }
+  return count >= 1 && count <= 2;
+}
+
+bool isAllUprightVertical(const std::string& word) {
+  const auto* ptr = reinterpret_cast<const unsigned char*>(word.c_str());
+  while (*ptr) {
+    if (!VerticalTextUtils::isUprightInVertical(utf8NextCodepoint(&ptr))) return false;
+  }
+  return !word.empty();
+}
 
 // Soft hyphen byte pattern used throughout EPUBs (UTF-8 for U+00AD).
 constexpr char SOFT_HYPHEN_UTF8[] = "\xC2\xAD";
@@ -254,12 +289,6 @@ void ParsedText::addWord(std::string word, const EpdFontFamily::Style fontStyle,
                          const bool attachToPrevious) {
   if (word.empty()) return;
 
-  // The device fonts carry no combining-mark positioning, so EPUB text stored in NFD
-  // (a base letter followed by separate combining accents -- common for Vietnamese,
-  // and used for many EPUB <h1> chapter headings) renders with the marks detached or
-  // misplaced. Compose to NFC here, the single funnel every word passes through, so a
-  // precomposed glyph is used instead. This runs once per word at layout time (the
-  // result is cached in the section file) and is a cheap no-op for mark-free text.
   word = utf8ComposeNfc(word);
 
   EpdFontFamily::Style baseStyle = fontStyle;
@@ -268,6 +297,22 @@ void ParsedText::addWord(std::string word, const EpdFontFamily::Style fontStyle,
   }
   const bool wordStartsRtl = !hasRtlWord && mayContainRtlBytes(word.c_str()) &&
                              BidiUtils::startsWithRtl(word.c_str(), RTL_PER_WORD_PROBE_DEPTH);
+
+  if (words.capacity() == 0) {
+    words.reserve(800);
+    wordStyles.reserve(800);
+    wordContinues.reserve(800);
+    wordNoSpaceBefore.reserve(800);
+    wordIsFocusSuffix.reserve(800);
+  }
+
+  auto breakOffsets = cjkCharacterBreakByteOffsets(word);
+  const size_t estimatedTokens = breakOffsets.empty() ? 1 : breakOffsets.size() + 1;
+  words.reserve(words.size() + estimatedTokens);
+  wordStyles.reserve(wordStyles.size() + estimatedTokens);
+  wordContinues.reserve(wordContinues.size() + estimatedTokens);
+  wordNoSpaceBefore.reserve(wordNoSpaceBefore.size() + estimatedTokens);
+  wordIsFocusSuffix.reserve(wordIsFocusSuffix.size() + estimatedTokens);
 
   const auto pushToken = [&](std::string token, const bool continues, const bool noSpaceBefore,
                              const bool isFocusSuffix) {
@@ -286,7 +331,7 @@ void ParsedText::addWord(std::string word, const EpdFontFamily::Style fontStyle,
     effectiveNoSpaceBefore = true;
   }
 
-  if (auto breakOffsets = cjkCharacterBreakByteOffsets(word); !breakOffsets.empty()) {
+  if (!breakOffsets.empty()) {
     bool firstToken = true;
     size_t tokenStart = 0;
     for (const size_t breakOffset : breakOffsets) {
@@ -447,6 +492,24 @@ void ParsedText::addWord(std::string word, const EpdFontFamily::Style fontStyle,
   }
 }
 
+void ParsedText::setRubyForLastWord(const std::string& ruby) {
+  if (rubyTexts.size() < words.size()) {
+    rubyTexts.resize(words.size());
+  }
+  if (!rubyTexts.empty()) {
+    rubyTexts.back() = ruby;
+  }
+}
+
+void ParsedText::setRubyForWordAt(size_t index, const std::string& ruby) {
+  if (rubyTexts.size() < words.size()) {
+    rubyTexts.resize(words.size());
+  }
+  if (index < rubyTexts.size()) {
+    rubyTexts[index] = ruby;
+  }
+}
+
 int ParsedText::resolveFirstLineIndent(const bool isFirstLine, const GfxRenderer& renderer, const int fontId) const {
   if (!isFirstLine || !isNaturalAlign) {
     return 0;
@@ -465,7 +528,12 @@ int ParsedText::resolveFirstLineIndent(const bool isFirstLine, const GfxRenderer
 // Consumes data to minimize memory usage
 void ParsedText::layoutAndExtractLines(const GfxRenderer& renderer, const int fontId, const uint16_t viewportWidth,
                                        const std::function<void(std::shared_ptr<TextBlock>)>& processLine,
-                                       const bool includeLastLine) {
+                                       const bool includeLastLine,
+                                       const bool isVertical) {
+  if (isVertical) {
+    layoutVerticalColumns(renderer, fontId, viewportWidth, processLine, includeLastLine);
+    return;
+  }
   if (words.empty()) {
     return;
   }
@@ -507,9 +575,16 @@ void ParsedText::layoutAndExtractLines(const GfxRenderer& renderer, const int fo
   const int pageWidth = viewportWidth;
   auto wordWidths = calculateWordWidths(renderer, fontId);
 
+  bool effectiveHyphenation = hyphenationEnabled;
+  if (effectiveHyphenation) {
+    if (ESP.getFreeHeap() < MIN_FREE_HEAP_FOR_HYPHENATION ||
+        ESP.getMaxAllocHeap() < MIN_MAX_ALLOC_FOR_HYPHENATION) {
+      effectiveHyphenation = false;
+    }
+  }
+
   std::vector<size_t> lineBreakIndices;
-  if (hyphenationEnabled) {
-    // Use greedy layout that can split words mid-loop when a hyphenated prefix fits.
+  if (effectiveHyphenation) {
     lineBreakIndices =
         computeHyphenatedLineBreaks(renderer, fontId, pageWidth, wordWidths, wordContinues, wordNoSpaceBefore);
   } else {
@@ -530,6 +605,9 @@ void ParsedText::layoutAndExtractLines(const GfxRenderer& renderer, const int fo
     wordContinues.erase(wordContinues.begin(), wordContinues.begin() + consumed);
     wordNoSpaceBefore.erase(wordNoSpaceBefore.begin(), wordNoSpaceBefore.begin() + consumed);
     wordIsFocusSuffix.erase(wordIsFocusSuffix.begin(), wordIsFocusSuffix.begin() + consumed);
+    if (!rubyTexts.empty()) {
+      rubyTexts.erase(rubyTexts.begin(), rubyTexts.begin() + consumed);
+    }
   }
 }
 
@@ -542,6 +620,80 @@ std::vector<uint16_t> ParsedText::calculateWordWidths(const GfxRenderer& rendere
   }
 
   return wordWidths;
+}
+
+void ParsedText::layoutVerticalColumns(const GfxRenderer& renderer, const int fontId, const uint16_t columnHeight,
+                                       const std::function<void(std::shared_ptr<TextBlock>)>& processColumn,
+                                       const bool includeLastColumn) {
+  if (words.empty()) return;
+
+  const int lineHeight = renderer.getLineHeight(fontId);
+  const int columnWidth = lineHeight;
+  if (columnWidth <= 0 || columnHeight <= 0) return;
+
+  applyParagraphIndent();
+
+  std::vector<std::string> colWords;
+  std::vector<int16_t> colWordYpos;
+  std::vector<EpdFontFamily::Style> colWordStyles;
+  colWords.reserve(words.size());
+  colWordYpos.reserve(words.size());
+  colWordStyles.reserve(words.size());
+
+  int currentY = 0;
+  size_t wordCount = words.size();
+  for (size_t i = 0; i < wordCount; ++i) {
+    std::string& w = words[i];
+    if (w.empty()) continue;
+
+    const auto vb = VerticalTextUtils::classifyVerticalBehavior(w);
+    int wordHeight;
+    if (vb == VerticalTextUtils::VerticalBehavior::TateChuYoko) {
+      wordHeight = renderer.getTextAdvanceX(fontId, w.c_str(), wordStyles[i]);
+    } else {
+      wordHeight = renderer.getLineHeight(fontId);
+    }
+
+    if (currentY + wordHeight > static_cast<int>(columnHeight) && !colWords.empty()) {
+      int columnX = columnWidth;
+      if (!colWords.empty()) {
+        columnX = -static_cast<int>(colWords.size()) * columnWidth;
+      }
+      std::vector<int16_t> colXpos(colWords.size(), static_cast<int16_t>(columnX));
+      auto rubyCopy = rubyTexts.empty() ? std::vector<std::string>() : std::vector<std::string>(rubyTexts);
+      processColumn(std::make_shared<TextBlock>(std::move(colWords), std::move(colXpos), std::move(colWordStyles),
+                                                std::vector<uint8_t>{}, std::vector<uint16_t>{},
+                                                blockStyle, std::move(colWordYpos), true, std::move(rubyCopy)));
+      colWords.clear();
+      colWordYpos.clear();
+      colWordStyles.clear();
+      currentY = 0;
+    }
+
+    colWords.push_back(std::move(w));
+    colWordStyles.push_back(wordStyles[i]);
+    colWordYpos.push_back(static_cast<int16_t>(currentY));
+    currentY += wordHeight;
+  }
+
+  if (!colWords.empty() && includeLastColumn) {
+    int columnX = columnWidth;
+    if (!colWords.empty()) {
+      columnX = -static_cast<int>(colWords.size()) * columnWidth;
+    }
+    std::vector<int16_t> colXpos(colWords.size(), static_cast<int16_t>(columnX));
+    auto rubyCopy = rubyTexts.empty() ? std::vector<std::string>() : std::vector<std::string>(rubyTexts);
+    processColumn(std::make_shared<TextBlock>(std::move(colWords), std::move(colXpos), std::move(colWordStyles),
+                                              std::vector<uint8_t>{}, std::vector<uint16_t>{},
+                                              blockStyle, std::move(colWordYpos), true, std::move(rubyCopy)));
+  }
+
+  words.clear();
+  wordStyles.clear();
+  wordContinues.clear();
+  wordNoSpaceBefore.clear();
+  wordIsFocusSuffix.clear();
+  rubyTexts.clear();
 }
 
 std::vector<size_t> ParsedText::computeLineBreaks(const GfxRenderer& renderer, const int fontId, const int pageWidth,
@@ -565,6 +717,10 @@ std::vector<size_t> ParsedText::computeLineBreaks(const GfxRenderer& renderer, c
   }
 
   const size_t totalWordCount = words.size();
+
+  if (totalWordCount > MAX_DP_TOKENS) {
+    return computeHyphenatedLineBreaks(renderer, fontId, pageWidth, wordWidths, continuesVec, noSpaceBeforeVec, false);
+  }
 
   // DP table to store the minimum badness (cost) of lines starting at index i
   std::vector<int> dp(totalWordCount);
@@ -660,10 +816,17 @@ std::vector<size_t> ParsedText::computeLineBreaks(const GfxRenderer& renderer, c
 }
 
 // Builds break indices while opportunistically splitting the word that would overflow the current line.
+void ParsedText::applyParagraphIndent() {
+  if (!isNaturalAlign || blockStyle.marginLeft != 0) return;
+  constexpr int INDENT_PX = 20;
+  blockStyle.marginLeft = INDENT_PX;
+}
+
 std::vector<size_t> ParsedText::computeHyphenatedLineBreaks(const GfxRenderer& renderer, const int fontId,
                                                             const int pageWidth, std::vector<uint16_t>& wordWidths,
                                                             std::vector<bool>& continuesVec,
-                                                            std::vector<bool>& noSpaceBeforeVec) {
+                                                            std::vector<bool>& noSpaceBeforeVec,
+                                                            bool allowHyphenation) {
   const int firstLineIndent = resolveFirstLineIndent(true, renderer, fontId);
 
   std::vector<size_t> lineBreakIndices;
@@ -704,7 +867,7 @@ std::vector<size_t> ParsedText::computeHyphenatedLineBreaks(const GfxRenderer& r
       const int availableWidth = effectivePageWidth - lineWidth - spacing;
       const bool allowFallbackBreaks = isFirstWord;  // Only for first word on line
 
-      if (availableWidth > 0 &&
+      if (allowHyphenation && availableWidth > 0 &&
           hyphenateWordAtIndex(currentIndex, availableWidth, renderer, fontId, wordWidths, allowFallbackBreaks)) {
         // Prefix now fits; append it to this line and move to next line
         lineWidth += spacing + wordWidths[currentIndex];
