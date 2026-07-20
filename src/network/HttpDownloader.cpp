@@ -1,8 +1,10 @@
 #include "HttpDownloader.h"
 
 #include <Arduino.h>
+#include <HTTPClient.h>
 #include <Logging.h>
 #include <Memory.h>
+#include <NetworkClientSecure.h>
 #include <base64.h>
 #include <esp_crt_bundle.h>
 #include <esp_http_client.h>
@@ -38,81 +40,76 @@ bool isRedirect(int status) {
   return status == 301 || status == 302 || status == 303 || status == 307 || status == 308;
 }
 
-// Identical to runGet but skips HTTPS certificate verification by setting
-// crt_bundle_attach = NULL. Used only for font downloads where the CDN
-// certificate chain may not be in the ESP32's CA bundle.
+// Arduino HTTPClient + NetworkClientSecure::setInsecure() for TLS without
+// certificate verification (matching zrn-ns behaviour).  The ESP-IDF native
+// esp_http_client path cannot disable cert verification without recompiling
+// the entire ESP-IDF with CONFIG_ESP_TLS_INSECURE.
 HttpDownloader::DownloadError runGetInsecure(const std::string& url, const std::string& username,
                                              const std::string& password, Sink& sink) {
-  esp_http_client_config_t config = {};
-  config.url = url.c_str();
-  config.buffer_size = HTTP_RX_BUF;
-  config.buffer_size_tx = HTTP_TX_BUF;
-  config.timeout_ms = HTTP_TIMEOUT_MS;
-  config.crt_bundle_attach = NULL;
-  config.keep_alive_enable = true;
+  // Wrap the Sink's write callback as an Arduino Stream so HTTPClient's
+  // writeToStream can feed data through our download+progress pipeline.
+  class SinkStream final : public Stream {
+   public:
+    explicit SinkStream(Sink& sink) : sink_(sink) {}
+    size_t write(uint8_t b) override { return write(&b, 1); }
+    size_t write(const uint8_t* data, size_t len) override {
+      if (!sink_.write(data, len)) { ok_ = false; return 0; }
+      sink_.downloaded += len;
+      if (sink_.progress) sink_.progress(sink_.downloaded, sink_.total);
+      return len;
+    }
+    int available() override { return 0; }
+    int read() override { return -1; }
+    int peek() override { return -1; }
+    void flush() override {}
+    bool ok() const { return ok_; }
+   private:
+    Sink& sink_;
+    bool ok_ = true;
+  };
 
-  esp_http_client_handle_t client = esp_http_client_init(&config);
-  if (!client) {
-    LOG_ERR("HTTP", "client init failed");
-    return HttpDownloader::HTTP_ERROR;
-  }
-  esp_http_client_set_header(client, "User-Agent", "CrossPoint-ESP32-" CROSSPOINT_VERSION);
+  NetworkClientSecure* secure = new NetworkClientSecure();
+  secure->setInsecure();
+  secure->setHandshakeTimeout(20);
+
+  HTTPClient http;
+  http.begin(*secure, url.c_str());
+  http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+  http.addHeader("User-Agent", "CrossPoint-ESP32-" CROSSPOINT_VERSION);
+
   if (!username.empty() && !password.empty()) {
     const std::string credentials = username + ":" + password;
-    const String header = "Basic " + base64::encode(credentials.c_str());
-    esp_http_client_set_header(client, "Authorization", header.c_str());
+    const String encoded = base64::encode(credentials.c_str());
+    http.addHeader("Authorization", "Basic " + encoded);
   }
-  esp_err_t err = esp_http_client_open(client, 0);
-  if (err != ESP_OK) {
-    LOG_ERR("HTTP", "open failed: %s", esp_err_to_name(err));
-    esp_http_client_cleanup(client);
+
+  LOG_DBG("HTTP", "Insecure GET: %s", url.c_str());
+  const int httpCode = http.GET();
+
+  if (httpCode <= 0) {
+    LOG_ERR("HTTP", "insecure GET failed: %d", httpCode);
+    http.end();
+    delete secure;
     return HttpDownloader::HTTP_ERROR;
   }
-  int64_t contentLength = esp_http_client_fetch_headers(client);
-  int status = esp_http_client_get_status_code(client);
-  for (int hop = 0; isRedirect(status) && hop < 5; ++hop) {
-    if (esp_http_client_set_redirection(client) != ESP_OK) break;
-    err = esp_http_client_open(client, 0);
-    if (err != ESP_OK) {
-      LOG_ERR("HTTP", "redirect open failed: %s", esp_err_to_name(err));
-      esp_http_client_cleanup(client);
-      return HttpDownloader::HTTP_ERROR;
-    }
-    contentLength = esp_http_client_fetch_headers(client);
-    status = esp_http_client_get_status_code(client);
-  }
-  if (status != 200) {
-    LOG_ERR("HTTP", "unexpected status: %d", status);
-    esp_http_client_cleanup(client);
+  if (httpCode != HTTP_CODE_OK) {
+    LOG_ERR("HTTP", "unexpected status: %d", httpCode);
+    http.end();
+    delete secure;
     return HttpDownloader::HTTP_ERROR;
   }
-  sink.total = contentLength > 0 ? static_cast<size_t>(contentLength) : 0;
-  auto buf = makeUniqueNoThrow<char[]>(READ_CHUNK);
-  if (!buf) {
-    LOG_ERR("HTTP", "OOM: %u byte read buffer", (unsigned)READ_CHUNK);
-    esp_http_client_cleanup(client);
-    return HttpDownloader::HTTP_ERROR;
+
+  sink.total = http.getSize();
+  SinkStream stream(sink);
+  const int written = http.writeToStream(&stream);
+  http.end();
+  delete secure;
+
+  if (written < 0 || !stream.ok()) {
+    LOG_ERR("HTTP", "writeToStream failed: %d", written);
+    return HttpDownloader::FILE_ERROR;
   }
-  while (true) {
-    if (sink.cancelFlag && *sink.cancelFlag) {
-      esp_http_client_cleanup(client);
-      return HttpDownloader::ABORTED;
-    }
-    const int read = esp_http_client_read(client, buf.get(), READ_CHUNK);
-    if (read < 0) {
-      LOG_ERR("HTTP", "read error after %zu bytes", sink.downloaded);
-      esp_http_client_cleanup(client);
-      return HttpDownloader::HTTP_ERROR;
-    }
-    if (read == 0) break;
-    if (!sink.write(reinterpret_cast<const uint8_t*>(buf.get()), static_cast<size_t>(read))) {
-      esp_http_client_cleanup(client);
-      return HttpDownloader::FILE_ERROR;
-    }
-    sink.downloaded += read;
-    if (sink.progress) sink.progress(sink.downloaded, sink.total);
-  }
-  esp_http_client_cleanup(client);
+  LOG_DBG("HTTP", "Downloaded %d bytes", written);
   return HttpDownloader::OK;
 }
 
