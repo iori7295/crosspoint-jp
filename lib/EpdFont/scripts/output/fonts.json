@@ -1,0 +1,125 @@
+{
+  "version": 1,
+  "baseUrl": "https://raw.githubusercontent.com/iori7295/crosspoint-jp/main/lib/EpdFont/scripts/output/",
+  "families": [
+    {
+      "name": "GenEiKoburiMincho",
+      "description": "\u6e90\u668e\u3053\u3076\u308a\u660e\u671d (GenEi Koburi Mincho)",
+      "styles": [
+        "regular"
+      ],
+      "files": [
+        {
+          "name": "GenEiKoburiMincho_10.cpfont",
+          "size": 1448809,
+          "crc32": 2941808743
+        },
+        {
+          "name": "GenEiKoburiMincho_12.cpfont",
+          "size": 1994086,
+          "crc32": 886928555
+        },
+        {
+          "name": "GenEiKoburiMincho_14.cpfont",
+          "size": 2539099,
+          "crc32": 1398231823
+        },
+        {
+          "name": "GenEiKoburiMincho_16.cpfont",
+          "size": 3167976,
+          "crc32": 1453447653
+        },
+        {
+          "name": "GenEiKoburiMincho_18.cpfont",
+          "size": 4186984,
+          "crc32": 1324858206
+        },
+        {
+          "name": "GenEiKoburiMincho_8.cpfont",
+          "size": 1084836,
+          "crc32": 2539874436
+        }
+      ]
+    },
+    {
+      "name": "NotoSansCJKjp",
+      "description": "\u30b4\u30b7\u30c3\u30af\u4f53 (Noto Sans CJK JP)",
+      "styles": [
+        "regular",
+        "bold"
+      ],
+      "files": [
+        {
+          "name": "NotoSansCJKjp_10.cpfont",
+          "size": 5162850,
+          "crc32": 142638230
+        },
+        {
+          "name": "NotoSansCJKjp_12.cpfont",
+          "size": 7267756,
+          "crc32": 1539885121
+        },
+        {
+          "name": "NotoSansCJKjp_14.cpfont",
+          "size": 9737736,
+          "crc32": 1042148849
+        },
+        {
+          "name": "NotoSansCJKjp_16.cpfont",
+          "size": 11956447,
+          "crc32": 445259021
+        },
+        {
+          "name": "NotoSansCJKjp_18.cpfont",
+          "size": 14980343,
+          "crc32": 2300600742
+        },
+        {
+          "name": "NotoSansCJKjp_8.cpfont",
+          "size": 3822543,
+          "crc32": 1794727293
+        }
+      ]
+    },
+    {
+      "name": "NotoSerifCJKjp",
+      "description": "\u660e\u671d\u4f53 (Noto Serif CJK JP)",
+      "styles": [
+        "regular",
+        "bold"
+      ],
+      "files": [
+        {
+          "name": "NotoSerifCJKjp_10.cpfont",
+          "size": 5266728,
+          "crc32": 3339341665
+        },
+        {
+          "name": "NotoSerifCJKjp_12.cpfont",
+          "size": 7450268,
+          "crc32": 2851145022
+        },
+        {
+          "name": "NotoSerifCJKjp_14.cpfont",
+          "size": 9987207,
+          "crc32": 701668238
+        },
+        {
+          "name": "NotoSerifCJKjp_16.cpfont",
+          "size": 12244629,
+          "crc32": 635128583
+        },
+        {
+          "name": "NotoSerifCJKjp_18.cpfont",
+          "size": 15398889,
+          "crc32": 2324211610
+        },
+        {
+          "name": "NotoSerifCJKjp_8.cpfont",
+          "size": 3907958,
+          "crc32": 2008763678
+        }
+      ]
+    }
+  ]
+}
