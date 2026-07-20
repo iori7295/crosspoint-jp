@@ -40,6 +40,8 @@ class ChapterHtmlSlimParser {
   std::unique_ptr<ParsedText> currentTextBlock = nullptr;
   std::unique_ptr<Page> currentPage = nullptr;
   int16_t currentPageNextY = 0;
+  int16_t currentPageNextX = 0;
+  bool verticalMode = false;
   int fontId;
   float lineCompression;
   bool extraParagraphSpacing;
@@ -88,6 +90,12 @@ class ChapterHtmlSlimParser {
   uint16_t xpathParagraphIndex = 0;
   uint16_t xpathListItemIndex = 0;
 
+  // Ruby text state
+  bool inRuby = false;
+  int rubyStartWordIndex = -1;
+  bool collectingRubyText = false;
+  std::string rubyTextBuffer;
+
   // Footnote link tracking
   bool insideFootnoteLink = false;
   int footnoteLinkDepth = -1;
@@ -119,7 +127,8 @@ class ChapterHtmlSlimParser {
                                  const bool embeddedStyle, const std::string& contentBase,
                                  const std::string& imageBasePath, const uint8_t imageRendering = 0,
                                  std::vector<std::string> tocAnchors = {},
-                                 const std::function<void()>& popupFn = nullptr, const CssParser* cssParser = nullptr)
+                                 const std::function<void()>& popupFn = nullptr, const CssParser* cssParser = nullptr,
+                                 bool verticalMode = false)
 
       : epub(epub),
         filepath(filepath),
@@ -139,7 +148,8 @@ class ChapterHtmlSlimParser {
         imageRendering(imageRendering),
         contentBase(contentBase),
         imageBasePath(imageBasePath),
-        tocAnchors(std::move(tocAnchors)) {}
+        tocAnchors(std::move(tocAnchors)),
+        verticalMode(verticalMode) {}
 
   ~ChapterHtmlSlimParser() = default;
   bool parseAndBuildPages();

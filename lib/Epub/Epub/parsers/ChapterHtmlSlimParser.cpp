@@ -1,5 +1,6 @@
 #include "ChapterHtmlSlimParser.h"
 
+#include <Esp.h>
 #include <FsHelpers.h>
 #include <GfxRenderer.h>
 #include <HalStorage.h>
@@ -19,8 +20,59 @@
 #include "Epub/htmlEntities.h"
 
 // Minimum file size (in bytes) to show indexing popup - smaller chapters don't benefit from it
-constexpr size_t MIN_SIZE_FOR_POPUP = 10 * 1024;  // 10KB
+constexpr size_t MIN_SIZE_FOR_POPUP = 0;
 constexpr size_t PARSE_BUFFER_SIZE = 1024;
+constexpr size_t MIN_FREE_HEAP_FOR_PARSING = 12 * 1024;
+
+uint32_t decodeUtf8Codepoint(const char* s, int maxLen) {
+  if (maxLen <= 0) return 0;
+  auto b0 = static_cast<uint8_t>(s[0]);
+  if ((b0 & 0x80) == 0) return b0;
+  if (maxLen >= 2 && (b0 & 0xE0) == 0xC0) {
+    return ((b0 & 0x1F) << 6) | (static_cast<uint8_t>(s[1]) & 0x3F);
+  }
+  if (maxLen >= 3 && (b0 & 0xF0) == 0xE0) {
+    return ((b0 & 0x0F) << 12) | ((static_cast<uint8_t>(s[1]) & 0x3F) << 6) | (static_cast<uint8_t>(s[2]) & 0x3F);
+  }
+  if (maxLen >= 4 && (b0 & 0xF8) == 0xF0) {
+    return ((b0 & 0x07) << 18) | ((static_cast<uint8_t>(s[1]) & 0x3F) << 12) |
+           ((static_cast<uint8_t>(s[2]) & 0x3F) << 6) | (static_cast<uint8_t>(s[3]) & 0x3F);
+  }
+  return b0;
+}
+
+int utf8ByteLength(unsigned char leadByte) {
+  if ((leadByte & 0x80) == 0) return 1;
+  if ((leadByte & 0xE0) == 0xC0) return 2;
+  if ((leadByte & 0xF0) == 0xE0) return 3;
+  if ((leadByte & 0xF8) == 0xF0) return 4;
+  return 1;
+}
+
+bool isInvisibleCodepoint(uint32_t cp) {
+  if (cp == 0xFEFF) return true;
+  if (cp == 0x200B) return true;
+  if (cp == 0x200C || cp == 0x200D) return true;
+  if (cp == 0x200E || cp == 0x200F) return true;
+  if (cp == 0x2060) return true;
+  if (cp == 0x00AD) return true;
+  if (cp == 0x034F) return true;
+  if (cp == 0x061C) return true;
+  if (cp >= 0x2066 && cp <= 0x2069) return true;
+  if (cp >= 0x202A && cp <= 0x202F) return true;
+  return false;
+}
+
+bool isCjkCodepointForSplit(uint32_t cp) {
+  if (cp >= 0x4E00 && cp <= 0x9FFF) return true;
+  if (cp >= 0x3400 && cp <= 0x4DBF) return true;
+  if (cp >= 0x3000 && cp <= 0x303F) return true;
+  if (cp >= 0x3040 && cp <= 0x309F) return true;
+  if (cp >= 0x30A0 && cp <= 0x30FF) return true;
+  if (cp >= 0xF900 && cp <= 0xFAFF) return true;
+  if (cp >= 0xFF00 && cp <= 0xFFEF) return true;
+  return false;
+}
 
 // Hard cap on the number of anchor IDs recorded per chapter. Legitimate navigation
 // anchors (TOC entries, footnotes, cross-references) rarely exceed a few hundred per
@@ -712,14 +764,26 @@ void XMLCALL ChapterHtmlSlimParser::startElement(void* userData, const XML_Char*
     }
   }
 
-  if (matches(name, SKIP_TAGS, std::size(SKIP_TAGS))) {
-    // start skip
-    self->skipUntilDepth = self->depth;
+  if (strcmp(name, "ruby") == 0) {
+    self->flushPartWordBuffer();
+    self->inRuby = true;
+    self->rubyStartWordIndex = self->currentTextBlock ? static_cast<int>(self->currentTextBlock->size()) : 0;
+    self->rubyTextBuffer.clear();
+    self->depth += 1;
+    return;
+  }
+  if (strcmp(name, "rt") == 0) {
+    self->flushPartWordBuffer();
+    self->collectingRubyText = true;
     self->depth += 1;
     return;
   }
 
-  // Skip blocks with role="doc-pagebreak" and epub:type="pagebreak"
+  if (matches(name, SKIP_TAGS, std::size(SKIP_TAGS))) {
+    self->skipUntilDepth = self->depth;
+    self->depth += 1;
+    return;
+  }
   if (atts != nullptr) {
     for (int i = 0; atts[i]; i += 2) {
       if (strcmp(atts[i], "role") == 0 && strcmp(atts[i + 1], "doc-pagebreak") == 0 ||
@@ -805,6 +869,10 @@ void XMLCALL ChapterHtmlSlimParser::startElement(void* userData, const XML_Char*
     headerBlockStyle.textAlignDefined = true;
     if (self->embeddedStyle && cssStyle.hasTextAlign()) {
       headerBlockStyle.alignment = cssStyle.textAlign;
+    }
+    const int level = name[1] - '0';
+    if (level <= 2) {
+      headerBlockStyle.drawSeparatorBelow = true;
     }
     const auto accumulated =
         self->blockStyleStack.back().getCombinedBlockStyle(headerBlockStyle, BlockStyle::CombineAxis::Horizontal);
@@ -971,6 +1039,12 @@ void XMLCALL ChapterHtmlSlimParser::characterData(void* userData, const XML_Char
     return;
   }
 
+  // Collect ruby text
+  if (self->collectingRubyText) {
+    self->rubyTextBuffer.append(s, len);
+    return;
+  }
+
   // Collect footnote link display text (for the number label)
   // Skip whitespace and brackets to normalize noterefs like "[1]" → "1"
   if (self->insideFootnoteLink) {
@@ -1065,62 +1139,72 @@ void XMLCALL ChapterHtmlSlimParser::characterData(void* userData, const XML_Char
       continue;
     }
 
-    // Skip Zero Width No-Break Space / BOM (U+FEFF) = 0xEF 0xBB 0xBF
-    const XML_Char FEFF_BYTE_1 = static_cast<XML_Char>(0xEF);
-    const XML_Char FEFF_BYTE_2 = static_cast<XML_Char>(0xBB);
-    const XML_Char FEFF_BYTE_3 = static_cast<XML_Char>(0xBF);
-
-    if (s[i] == FEFF_BYTE_1) {
-      // Check if the next two bytes complete the 3-byte sequence
-      if ((i + 2 < len) && (s[i + 1] == FEFF_BYTE_2) && (s[i + 2] == FEFF_BYTE_3)) {
-        // Sequence 0xEF 0xBB 0xBF found!
-        i += 2;    // Skip the next two bytes
-        continue;  // Move to the next iteration
+    // Determine UTF-8 character length and decode the codepoint.
+    const int charLen = utf8ByteLength(static_cast<uint8_t>(s[i]));
+    if (i + charLen > len) {
+      if (self->partWordBufferIndex < MAX_WORD_SIZE) {
+        self->partWordBuffer[self->partWordBufferIndex++] = s[i];
       }
+      i++;
+      continue;
+    }
+    const uint32_t cp = decodeUtf8Codepoint(&s[i], charLen);
+
+    // Skip invisible/zero-width Unicode characters.
+    if (isInvisibleCodepoint(cp)) {
+      i += charLen;
+      continue;
     }
 
-    // If we're about to run out of space, then cut the word off and start a new one.
-    // For CJK text (no spaces), this is the primary word-breaking mechanism.
-    // We must avoid splitting multi-byte UTF-8 sequences across word boundaries,
-    // otherwise the trailing bytes become orphaned continuation bytes that the
-    // decoder can't interpret.
-    if (self->partWordBufferIndex >= MAX_WORD_SIZE) {
-      int safeLen = utf8SafeTruncateBuffer(self->partWordBuffer, self->partWordBufferIndex);
-
-      if (safeLen < self->partWordBufferIndex && safeLen > 0) {
-        // Incomplete UTF-8 sequence at the end — save it before flushing
-        int overflow = self->partWordBufferIndex - safeLen;
-        char saved[4];
-        for (int j = 0; j < overflow; j++) {
-          saved[j] = self->partWordBuffer[safeLen + j];
-        }
-        self->partWordBufferIndex = safeLen;
-        self->flushPartWordBuffer();
-        for (int j = 0; j < overflow; j++) {
-          self->partWordBuffer[j] = saved[j];
-        }
-        self->partWordBufferIndex = overflow;
-      } else {
+    // Treat ideographic space (U+3000) as whitespace — flush buffer and skip.
+    if (cp == 0x3000) {
+      if (self->partWordBufferIndex > 0) {
         self->flushPartWordBuffer();
       }
+      self->nextWordContinues = false;
+      i += charLen;
+      continue;
     }
 
-    self->partWordBuffer[self->partWordBufferIndex++] = s[i];
+    // Non-CJK, non-invisible character: buffer it.
+    if (self->partWordBufferIndex + charLen >= MAX_WORD_SIZE) {
+      self->flushPartWordBuffer();
+    }
+    for (int j = 0; j < charLen; j++) {
+      self->partWordBuffer[self->partWordBufferIndex++] = s[i + j];
+    }
+    i += charLen - 1;
   }
 
-  // If we have > 750 words buffered up, perform the layout and consume out all but the last line
-  // There should be enough here to build out 1-2 full pages and doing this will free up a lot of
-  // memory.
-  // Spotted when reading Intermezzo, there are some really long text blocks in there.
-  if (self->currentTextBlock->size() > 750) {
+  // Flush buffered words aggressively: CJK text produces ~10x more tokens than
+  // Latin text, so keeping 750 words would create a huge vector peak.
+  const size_t wordCount = self->currentTextBlock->size();
+  const size_t softLimit = self->verticalMode ? 200 : 30;
+  const size_t earlyLimit = self->verticalMode ? 100 : 24;
+  const bool normalFlush = wordCount > softLimit;
+  const uint32_t freeHeap = ESP.getFreeHeap();
+  const uint32_t maxAlloc = ESP.getMaxAllocHeap();
+  const bool earlyFlush =
+      wordCount > earlyLimit &&
+      (maxAlloc < (self->verticalMode ? 40000 : 35000) ||
+       freeHeap < MIN_FREE_HEAP_FOR_PARSING * 2);
+  if (normalFlush || earlyFlush) {
     LOG_DBG("EHP", "Text block too long, splitting into multiple pages");
-    const int horizontalInset = self->currentTextBlock->getBlockStyle().totalHorizontalInset();
-    const uint16_t effectiveWidth = (horizontalInset < self->viewportWidth)
-                                        ? static_cast<uint16_t>(self->viewportWidth - horizontalInset)
-                                        : self->viewportWidth;
-    self->currentTextBlock->layoutAndExtractLines(
-        self->renderer, self->fontId, effectiveWidth,
-        [self](const std::shared_ptr<TextBlock>& textBlock) { self->addLineToPage(textBlock); }, false);
+    if (self->verticalMode) {
+      const uint16_t effectiveHeight = self->viewportHeight;
+      self->currentTextBlock->layoutVerticalColumns(
+          self->renderer, self->fontId, effectiveHeight,
+          [self](const std::shared_ptr<TextBlock>& textBlock) { self->addLineToPage(textBlock); }, false);
+    } else {
+      const int horizontalInset = self->currentTextBlock->getBlockStyle().totalHorizontalInset();
+      const uint16_t effectiveWidth = (horizontalInset < self->viewportWidth)
+                                          ? static_cast<uint16_t>(self->viewportWidth - horizontalInset)
+                                          : self->viewportWidth;
+      self->currentTextBlock->layoutAndExtractLines(
+          self->renderer, self->fontId, effectiveWidth,
+          [self](const std::shared_ptr<TextBlock>& textBlock) { self->addLineToPage(textBlock); }, false,
+          self->verticalMode);
+    }
   }
 }
 
@@ -1184,6 +1268,38 @@ void XMLCALL ChapterHtmlSlimParser::endElement(void* userData, const XML_Char* n
   }
 
   self->depth -= 1;
+
+  // Ruby text: </rt> closes collection, </ruby> distributes ruby to base words
+  if (strcmp(name, "rt") == 0) {
+    self->collectingRubyText = false;
+  }
+  if (strcmp(name, "ruby") == 0 && self->inRuby && self->currentTextBlock) {
+    const int currentWordCount = static_cast<int>(self->currentTextBlock->size());
+    const int baseWordCount = currentWordCount - self->rubyStartWordIndex;
+    if (baseWordCount > 0 && !self->rubyTextBuffer.empty()) {
+      std::vector<size_t> charOffsets;
+      const char* p = self->rubyTextBuffer.c_str();
+      while (*p) {
+        charOffsets.push_back(p - self->rubyTextBuffer.c_str());
+        if ((*p & 0x80) == 0) p += 1;
+        else if ((*p & 0xE0) == 0xC0) p += 2;
+        else if ((*p & 0xF0) == 0xE0) p += 3;
+        else p += 4;
+      }
+      charOffsets.push_back(self->rubyTextBuffer.size());
+      const int rubyCharCount = static_cast<int>(charOffsets.size() - 1);
+      for (int i = 0; i < baseWordCount; i++) {
+        const int start = i * rubyCharCount / baseWordCount;
+        const int end = (i + 1) * rubyCharCount / baseWordCount;
+        if (start < end) {
+          std::string portion = self->rubyTextBuffer.substr(charOffsets[start], charOffsets[end] - charOffsets[start]);
+          self->currentTextBlock->setRubyForWordAt(
+              static_cast<size_t>(self->rubyStartWordIndex + i), portion);
+        }
+      }
+    }
+    self->inRuby = false;
+  }
 
   // Closing a footnote link — create entry from collected text and href
   if (self->insideFootnoteLink && self->depth == self->footnoteLinkDepth) {
