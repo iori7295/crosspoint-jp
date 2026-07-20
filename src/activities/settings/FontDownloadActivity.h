@@ -16,7 +16,7 @@
 
 #ifndef FONT_MANIFEST_URL
 #define FONT_MANIFEST_URL \
-  "https://raw.githubusercontent.com/iori7295/crosspoint-jp/HEAD/lib/EpdFont/scripts/output/fonts.json"
+  "https://raw.githubusercontent.com/iori7295/crosspoint-jp/main/lib/EpdFont/scripts/output/fonts.json"
 #endif
 
 class FontDownloadActivity : public Activity {
