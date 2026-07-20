@@ -44,4 +44,11 @@ class HttpDownloader {
   static DownloadError downloadToFile(const std::string& url, const std::string& destPath,
                                       ProgressCallback progress = nullptr, bool* cancelFlag = nullptr,
                                       const std::string& username = "", const std::string& password = "");
+
+  // Same as downloadToFile but skips HTTPS certificate verification.
+  // Used for font downloads where the CDN's TLS chain may not be in the
+  // ESP32's CA bundle (matching zrn-ns and upstream wolfSSL behaviour).
+  static DownloadError downloadToFileInsecure(const std::string& url, const std::string& destPath,
+                                              ProgressCallback progress = nullptr, bool* cancelFlag = nullptr,
+                                              const std::string& username = "", const std::string& password = "");
 };
