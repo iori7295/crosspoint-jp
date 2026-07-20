@@ -43,7 +43,7 @@ constexpr size_t MAX_RULES = 1500;
 
 // Minimum free heap required to apply CSS during rendering
 // If below this threshold, we skip CSS to avoid display artifacts.
-constexpr size_t MIN_FREE_HEAP_FOR_CSS = 48 * 1024;
+constexpr size_t MIN_FREE_HEAP_FOR_CSS = 16 * 1024;
 
 // Maximum length for a single selector string
 // Prevents parsing of extremely long or malformed selectors
@@ -407,6 +407,12 @@ void CssParser::parseDeclarationIntoStyle(std::string_view decl, CssStyle& style
       style.verticalAlign = CssVerticalAlign::Sub;
       style.defined.verticalAlign = 1;
     }
+  } else if (iequalsAscii(name, "writing-mode") || iequalsAscii(name, "-epub-writing-mode") ||
+             iequalsAscii(name, "-webkit-writing-mode")) {
+    if (iequalsAscii(value, "vertical-rl")) {
+      style.writingMode = CssWritingMode::VerticalRl;
+      style.defined.writingMode = 1;
+    }
   }
 }
 
@@ -737,6 +743,7 @@ bool CssParser::saveToCache() const {
     writeLength(style.imageWidth);
     file.write(static_cast<uint8_t>(style.display));
     file.write(static_cast<uint8_t>(style.verticalAlign));
+    file.write(static_cast<uint8_t>(style.writingMode));
 
     // Write defined flags as uint32_t
     uint32_t definedBits = 0;
@@ -758,6 +765,7 @@ bool CssParser::saveToCache() const {
     if (style.defined.display) definedBits |= 1 << 15;
     if (style.defined.direction) definedBits |= 1 << 16;
     if (style.defined.verticalAlign) definedBits |= 1 << 17;
+    if (style.defined.writingMode) definedBits |= 1 << 18;
     file.write(reinterpret_cast<const uint8_t*>(&definedBits), sizeof(definedBits));
   }
 
@@ -913,6 +921,14 @@ bool CssParser::loadFromCache() {
     }
     style.verticalAlign = static_cast<CssVerticalAlign>(verticalAlignVal);
 
+    // Read writingMode value
+    uint8_t writingModeVal;
+    if (file.read(&writingModeVal, 1) != 1) {
+      rulesBySelector_.clear();
+      return false;
+    }
+    style.writingMode = static_cast<CssWritingMode>(writingModeVal);
+
     // Read defined flags
     uint32_t definedBits = 0;
     if (file.read(&definedBits, sizeof(definedBits)) != sizeof(definedBits)) {
@@ -937,6 +953,7 @@ bool CssParser::loadFromCache() {
     style.defined.display = (definedBits & 1 << 15) != 0;
     style.defined.direction = (definedBits & 1 << 16) != 0;
     style.defined.verticalAlign = (definedBits & 1 << 17) != 0;
+    style.defined.writingMode = (definedBits & 1 << 18) != 0;
 
     rulesBySelector_[selector] = style;
   }
