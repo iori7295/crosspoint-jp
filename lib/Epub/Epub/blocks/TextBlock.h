@@ -30,7 +30,6 @@ class TextBlock final : public Block {
   std::vector<int16_t> wordYpos;
   bool isVertical = false;
   std::vector<std::string> rubyTexts;
-  std::vector<VerticalTextUtils::VerticalBehavior> wordVerticalBehaviors;
   BlockStyle blockStyle;
 
  public:
@@ -39,8 +38,7 @@ class TextBlock final : public Block {
                      std::vector<EpdFontFamily::Style> word_styles, std::vector<uint8_t> focus_boundary,
                      std::vector<uint16_t> focus_suffix_x, const BlockStyle& blockStyle = BlockStyle(),
                      std::vector<int16_t> word_ypos = {}, bool vertical = false,
-                      std::vector<std::string> ruby_texts = {},
-                      std::vector<VerticalTextUtils::VerticalBehavior> word_vertical_behaviors = {})
+                      std::vector<std::string> ruby_texts = {})
       : words(std::move(words)),
         wordXpos(std::move(word_xpos)),
         wordStyles(std::move(word_styles)),
@@ -49,7 +47,6 @@ class TextBlock final : public Block {
         wordYpos(std::move(word_ypos)),
         isVertical(vertical),
         rubyTexts(std::move(ruby_texts)),
-        wordVerticalBehaviors(std::move(word_vertical_behaviors)),
         blockStyle(blockStyle) {}
   ~TextBlock() override = default;
   void setBlockStyle(const BlockStyle& blockStyle) { this->blockStyle = blockStyle; }

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <Utf8.h>
+
 #include <cstdint>
 
 namespace VerticalTextUtils {
@@ -101,6 +103,36 @@ inline bool isUprightInVertical(uint32_t cp) {
       break;
   }
   return false;
+}
+
+inline VerticalBehavior classifyVerticalBehavior(const std::string& word) {
+  if (word.empty()) return VerticalBehavior::Upright;
+  auto isAsciiDigitsOnly = [](const std::string& w) -> bool {
+    if (w.empty()) return false;
+    const auto* p = reinterpret_cast<const unsigned char*>(w.c_str());
+    int count = 0;
+    while (*p) {
+      const uint32_t cp = utf8NextCodepoint(&p);
+      if (cp < '0' || cp > '9') return false;
+      if (++count > 2) return false;
+    }
+    return count >= 1;
+  };
+  auto isAllUpright = [](const std::string& w) -> bool {
+    const auto* p = reinterpret_cast<const unsigned char*>(w.c_str());
+    while (*p) {
+      if (!isUprightInVertical(utf8NextCodepoint(&p))) return false;
+    }
+    return true;
+  };
+
+  if (isAsciiDigitsOnly(word)) return VerticalBehavior::TateChuYoko;
+  if (isAllUpright(word)) return VerticalBehavior::Upright;
+  const auto* p = reinterpret_cast<const unsigned char*>(word.c_str());
+  while (*p) {
+    if (utf8NextCodepoint(&p) >= 0x2E80) return VerticalBehavior::Upright;
+  }
+  return VerticalBehavior::Sideways;
 }
 
 /// Returns true if the font may have a vertical-specific glyph (via OTVert /

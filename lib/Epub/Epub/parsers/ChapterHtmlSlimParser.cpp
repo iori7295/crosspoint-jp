@@ -251,11 +251,7 @@ void ChapterHtmlSlimParser::flushPartWordBuffer() {
       if ((partWordBuffer[i] & 0xC0) != 0x80) charCount++;
       if (partWordBuffer[i] < '0' || partWordBuffer[i] > '9') allDigits = false;
     }
-    auto vb = VerticalTextUtils::VerticalBehavior::Sideways;
-    if (allDigits && charCount <= 2) {
-      vb = VerticalTextUtils::VerticalBehavior::TateChuYoko;
-    }
-    currentTextBlock->addWord(partWordBuffer, fontStyle, vb, false, nextWordContinues);
+    currentTextBlock->addWord(partWordBuffer, fontStyle, false, nextWordContinues);
   } else {
     currentTextBlock->addWord(partWordBuffer, fontStyle, false, nextWordContinues);
   }
@@ -1204,8 +1200,8 @@ void XMLCALL ChapterHtmlSlimParser::characterData(void* userData, const XML_Char
   // Latin text, so keeping 750 words would create a huge vector peak. Flush at
   // 100 words (~3-4 lines) to keep working set small and avoid OOM.
   const size_t wordCount = self->currentTextBlock->size();
-  const size_t softLimit = self->verticalMode ? 16 : 30;
-  const size_t earlyLimit = self->verticalMode ? 12 : 24;
+  const size_t softLimit = self->verticalMode ? 200 : 30;
+  const size_t earlyLimit = self->verticalMode ? 100 : 24;
   const bool normalFlush = wordCount > softLimit;
   const uint32_t freeHeap = ESP.getFreeHeap();
   const uint32_t maxAlloc = ESP.getMaxAllocHeap();

@@ -320,7 +320,6 @@ void ParsedText::addWord(std::string word, const EpdFontFamily::Style fontStyle,
     wordContinues.reserve(800);
     wordNoSpaceBefore.reserve(800);
     wordIsFocusSuffix.reserve(800);
-    wordVerticalBehaviors.reserve(800);
   }
 
   // Pre-compute CJK break offsets so we can reserve vector capacity before
@@ -508,44 +507,6 @@ void ParsedText::addWord(std::string word, const EpdFontFamily::Style fontStyle,
   }
 }
 
-void ParsedText::addWord(std::string word, const EpdFontFamily::Style fontStyle,
-                         const VerticalTextUtils::VerticalBehavior vBehavior, const bool underline,
-                         const bool attachToPrevious) {
-  size_t oldSize = words.size();
-  addWord(std::move(word), fontStyle, underline, attachToPrevious);
-  size_t newSize = words.size();
-
-  if (wordVerticalBehaviors.capacity() == 0) {
-    wordVerticalBehaviors.reserve(800);
-  }
-
-  // Fill any gap (e.g. <li> bullets that called addWord without behavior)
-  while (wordVerticalBehaviors.size() < oldSize) {
-    wordVerticalBehaviors.push_back(VerticalTextUtils::VerticalBehavior::Upright);
-  }
-
-  for (size_t i = oldSize; i < newSize; ++i) {
-    auto behavior = vBehavior;
-    // When a word was flagged Sideways, check every codepoint: if any is
-    if (behavior == VerticalTextUtils::VerticalBehavior::Sideways) {
-      if (isAsciiDigitsOnly(words[i])) {
-        behavior = VerticalTextUtils::VerticalBehavior::TateChuYoko;
-      } else if (isAllUprightVertical(words[i])) {
-        behavior = VerticalTextUtils::VerticalBehavior::Upright;
-      } else {
-        const auto* ptr = reinterpret_cast<const unsigned char*>(words[i].c_str());
-        while (*ptr) {
-          if (utf8NextCodepoint(&ptr) >= 0x2E80) {
-            behavior = VerticalTextUtils::VerticalBehavior::Upright;
-            break;
-          }
-        }
-      }
-    }
-    wordVerticalBehaviors.push_back(behavior);
-  }
-}
-
 void ParsedText::setRubyForLastWord(const std::string& ruby) {
   if (rubyTexts.size() < words.size()) {
     rubyTexts.resize(words.size());
@@ -681,10 +642,6 @@ void ParsedText::layoutAndExtractLines(const GfxRenderer& renderer, const int fo
       const size_t rtConsumed = std::min(consumed, static_cast<size_t>(rubyTexts.size()));
       rubyTexts.erase(rubyTexts.begin(), rubyTexts.begin() + rtConsumed);
     }
-    if (!wordVerticalBehaviors.empty()) {
-      const size_t vbConsumed = std::min(consumed, static_cast<size_t>(wordVerticalBehaviors.size()));
-      wordVerticalBehaviors.erase(wordVerticalBehaviors.begin(), wordVerticalBehaviors.begin() + vbConsumed);
-    }
   }
 }
 void ParsedText::layoutVerticalColumns(
@@ -720,12 +677,14 @@ void ParsedText::layoutVerticalColumns(
   const int tokenSpacing = lineHeight * sp / 100;
 
   for (size_t i = 0; i < words.size(); i++) {
-    auto vb = (i < wordVerticalBehaviors.size()) ? wordVerticalBehaviors[i]
-                                                  : VerticalTextUtils::VerticalBehavior::Upright;
-    int cells = 1;
+    const auto vb = VerticalTextUtils::classifyVerticalBehavior(words[i]);
+    int cells;
     switch (vb) {
       case VerticalTextUtils::VerticalBehavior::TateChuYoko:
         cells = 1;
+        break;
+      case VerticalTextUtils::VerticalBehavior::Upright:
+        cells = countRenderableCodepoints(words[i]);
         break;
       case VerticalTextUtils::VerticalBehavior::Sideways:
       default:
@@ -743,7 +702,10 @@ void ParsedText::layoutVerticalColumns(
   }
 
   // Compute first-line indent for vertical mode
-  const int firstLineIndentVal = resolveFirstLineIndent(true, renderer, fontId);
+  int firstLineIndentVal = resolveFirstLineIndent(true, renderer, fontId);
+  if (firstLineIndentVal == 0 && isNaturalAlign && !blockStyle.textIndentDefined && !extraParagraphSpacing) {
+    firstLineIndentVal = renderer.getLineHeight(fontId);
+  }
 
   const bool lowHeap =
       ESP.getFreeHeap() < MIN_FREE_HEAP_FOR_HYPHENATION ||
@@ -780,14 +742,6 @@ void ParsedText::layoutVerticalColumns(
       colRubyTexts.resize(count);
     }
 
-    std::vector<VerticalTextUtils::VerticalBehavior> colBehaviors;
-    colBehaviors.reserve(count);
-    for (size_t j = start; j < end; j++) {
-      colBehaviors.push_back((j < wordVerticalBehaviors.size())
-                                 ? wordVerticalBehaviors[j]
-                                 : VerticalTextUtils::VerticalBehavior::Upright);
-    }
-
     colYpos.reserve(count);
     colXpos.resize(count, 0);
     int y = isFirstColumn ? firstLineIndentVal : 0;
@@ -798,15 +752,16 @@ void ParsedText::layoutVerticalColumns(
 
     processColumn(std::make_shared<TextBlock>(std::move(colWords), std::move(colXpos), std::move(colStyles),
                                               std::vector<uint8_t>{}, std::vector<uint16_t>{}, blockStyle,
-                                              std::move(colYpos), true, std::move(colRubyTexts),
-                                              std::move(colBehaviors)));
+                                              std::move(colYpos), true, std::move(colRubyTexts)));
   };
 
   while (i < words.size()) {
     if (wordHeights[i] > columnHeight && i == columnStart) {
-      emitColumn(columnStart, i);
-      columnStart = i;
-      currentY = wordHeights[i];
+      emitColumn(columnStart, i + 1);
+      isFirstColumn = false;
+      consumed = i + 1;
+      columnStart = i + 1;
+      currentY = 0;
       ++i;
       continue;
     }
@@ -819,7 +774,7 @@ void ParsedText::layoutVerticalColumns(
           --breakAt;
         }
         if (breakAt > columnStart + 1 &&
-            VerticalTextUtils::isKinsokuTail(firstCp(words[breakAt - 1]))) {
+            VerticalTextUtils::isKinsokuTail(lastCodepoint(words[breakAt - 1]))) {
           --breakAt;
         }
       }
@@ -852,10 +807,6 @@ void ParsedText::layoutVerticalColumns(
     if (!rubyTexts.empty()) {
       const size_t rtConsumed = std::min(consumed, static_cast<size_t>(rubyTexts.size()));
       rubyTexts.erase(rubyTexts.begin(), rubyTexts.begin() + rtConsumed);
-    }
-    if (!wordVerticalBehaviors.empty()) {
-      const size_t vbConsumed = std::min(consumed, static_cast<size_t>(wordVerticalBehaviors.size()));
-      wordVerticalBehaviors.erase(wordVerticalBehaviors.begin(), wordVerticalBehaviors.begin() + vbConsumed);
     }
   }
 }
@@ -1121,10 +1072,6 @@ bool ParsedText::hyphenateWordAtIndex(const size_t wordIndex, const int availabl
   wordIsFocusSuffix.insert(wordIsFocusSuffix.begin() + wordIndex + 1, false);
   if (!rubyTexts.empty()) {
     rubyTexts.insert(rubyTexts.begin() + wordIndex + 1, rubyTexts[wordIndex]);
-  }
-  if (!wordVerticalBehaviors.empty()) {
-    wordVerticalBehaviors.insert(wordVerticalBehaviors.begin() + wordIndex + 1,
-                                  wordVerticalBehaviors[wordIndex]);
   }
 
   // Continuation flag handling after splitting a word into prefix + remainder.

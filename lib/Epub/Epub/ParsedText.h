@@ -32,7 +32,6 @@ class ParsedText {
   std::vector<bool> reorderedNoSpaceBeforeScratch;
   std::vector<bool> reorderedFocusSuffixScratch;
   std::vector<uint16_t> visualOrderScratch;
-  std::vector<VerticalTextUtils::VerticalBehavior> wordVerticalBehaviors;
   std::vector<std::string> rubyTexts;
 
   int resolveFirstLineIndent(bool isFirstLine, const GfxRenderer& renderer, int fontId) const;
@@ -65,8 +64,6 @@ class ParsedText {
   ~ParsedText() = default;
 
   void addWord(std::string word, EpdFontFamily::Style fontStyle, bool underline = false, bool attachToPrevious = false);
-  void addWord(std::string word, EpdFontFamily::Style fontStyle, VerticalTextUtils::VerticalBehavior vBehavior,
-               bool underline = false, bool attachToPrevious = false);
   void layoutVerticalColumns(const GfxRenderer& renderer, int fontId, uint16_t columnHeight,
                              const std::function<void(std::shared_ptr<TextBlock>)>& processColumn,
                              bool includeLastColumn = true);
