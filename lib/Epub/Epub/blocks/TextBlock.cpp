@@ -40,7 +40,7 @@ void TextBlock::render(const GfxRenderer& renderer, const int fontId, const int 
       }
 
       if (i < rubyTexts.size() && !rubyTexts[i].empty() && rubyFontId >= 0) {
-        const int rubyX = wordX - renderer.getLineHeight(fontId);
+        const int rubyX = wordX + baseLineHeight - renderer.getLineHeight(rubyFontId);
         if (wordY <= logicalMax && wordY >= lowerClip &&
             rubyX <= logicalMax && rubyX >= -logicalMax / 2) {
           renderer.drawTextVertical(rubyFontId, rubyX, wordY, rubyTexts[i].c_str(), true,
@@ -177,8 +177,12 @@ bool TextBlock::serialize(HalFile& file) const {
     for (auto y : wordYpos) serialization::writePod(file, y);
   }
 
-  for (size_t i = 0; i < words.size(); i++) {
-    serialization::writeString(file, (i < rubyTexts.size()) ? rubyTexts[i] : std::string());
+  const bool blockHasRuby = hasRuby();
+  serialization::writePod(file, static_cast<uint8_t>(blockHasRuby ? 1 : 0));
+  if (blockHasRuby) {
+    for (size_t i = 0; i < words.size(); i++) {
+      serialization::writeString(file, (i < rubyTexts.size()) ? rubyTexts[i] : std::string());
+    }
   }
 
   return true;
@@ -238,8 +242,13 @@ std::unique_ptr<TextBlock> TextBlock::deserialize(HalFile& file) {
     for (auto& y : wordYpos) serialization::readPod(file, y);
   }
 
-  std::vector<std::string> rubyTexts(wc);
-  for (auto& rt : rubyTexts) serialization::readString(file, rt);
+  uint8_t hasRubyFlag = 0;
+  serialization::readPod(file, hasRubyFlag);
+  std::vector<std::string> rubyTexts;
+  if (hasRubyFlag) {
+    rubyTexts.resize(wc);
+    for (auto& rt : rubyTexts) serialization::readString(file, rt);
+  }
 
   auto tb = new (std::nothrow) TextBlock(std::move(words), std::move(wordXpos), std::move(wordStyles),
                                           std::move(wordFocusBoundary), std::move(wordFocusSuffixX),

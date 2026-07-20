@@ -1474,18 +1474,39 @@ bool ChapterHtmlSlimParser::parseAndBuildPages() {
 }
 
 void ChapterHtmlSlimParser::addLineToPage(std::shared_ptr<TextBlock> line) {
+  const bool isVertical = line->getIsVertical();
   const int lineHeight = renderer.getLineHeight(fontId) * lineCompression;
+  const int columnWidth = renderer.getLineHeight(fontId);
+  const int columnSpacing = 0;
 
   if (!currentPage) {
     currentPage.reset(new Page());
     currentPageNextY = 0;
+    currentPageNextX = 0;
   }
 
-  if (currentPageNextY + lineHeight > viewportHeight) {
-    completePageFn(std::move(currentPage), xpathParagraphIndex, xpathListItemIndex);
-    completedPageCount++;
-    currentPage.reset(new Page());
-    currentPageNextY = 0;
+  if (isVertical) {
+    // 縦書き：列はX方向に進む。1ページの横幅を超えたら改ページ。
+    if (currentPageNextX + columnWidth + columnSpacing > viewportWidth) {
+      completePageFn(std::move(currentPage), xpathParagraphIndex, xpathListItemIndex);
+      completedPageCount++;
+      currentPage.reset(new Page());
+      currentPageNextX = 0;
+    }
+    currentPage->elements.push_back(std::make_shared<PageLine>(line, currentPageNextX, 0));
+    currentPageNextX += columnWidth + columnSpacing;
+  } else {
+    if (currentPageNextY + lineHeight > viewportHeight) {
+      completePageFn(std::move(currentPage), xpathParagraphIndex, xpathListItemIndex);
+      completedPageCount++;
+      currentPage.reset(new Page());
+      currentPageNextY = 0;
+    }
+
+    // Apply horizontal left inset (margin + padding) as x position offset
+    const int16_t xOffset = line->getBlockStyle().leftInset();
+    currentPage->elements.push_back(std::make_shared<PageLine>(line, xOffset, currentPageNextY));
+    currentPageNextY += lineHeight;
   }
 
   // Track cumulative words to assign footnotes to the page containing their anchor
@@ -1496,11 +1517,6 @@ void ChapterHtmlSlimParser::addLineToPage(std::shared_ptr<TextBlock> line) {
     ++footnoteIt;
   }
   pendingFootnotes.erase(pendingFootnotes.begin(), footnoteIt);
-
-  // Apply horizontal left inset (margin + padding) as x position offset
-  const int16_t xOffset = line->getBlockStyle().leftInset();
-  currentPage->elements.push_back(std::make_shared<PageLine>(line, xOffset, currentPageNextY));
-  currentPageNextY += lineHeight;
 }
 
 void ChapterHtmlSlimParser::makePages() {
@@ -1512,27 +1528,49 @@ void ChapterHtmlSlimParser::makePages() {
   if (!currentPage) {
     currentPage.reset(new Page());
     currentPageNextY = 0;
+    currentPageNextX = 0;
   }
 
   const int lineHeight = renderer.getLineHeight(fontId) * lineCompression;
-
-  // Apply top spacing before the paragraph (stored in pixels)
   const BlockStyle& blockStyle = currentTextBlock->getBlockStyle();
-  if (blockStyle.marginTop > 0) {
-    currentPageNextY += blockStyle.marginTop;
-  }
-  if (blockStyle.paddingTop > 0) {
-    currentPageNextY += blockStyle.paddingTop;
-  }
 
-  // Calculate effective width accounting for horizontal margins/padding
-  const int horizontalInset = blockStyle.totalHorizontalInset();
-  const uint16_t effectiveWidth =
-      (horizontalInset < viewportWidth) ? static_cast<uint16_t>(viewportWidth - horizontalInset) : viewportWidth;
+  if (verticalMode) {
+    // 縦書き：列レイアウト。列は右→左に積む。
+    const uint16_t effectiveHeight = viewportHeight;
+    currentTextBlock->layoutVerticalColumns(
+        renderer, fontId, effectiveHeight,
+        [this](const std::shared_ptr<TextBlock>& textBlock) { addLineToPage(textBlock); });
+  } else {
+    // Apply top spacing before the paragraph (stored in pixels)
+    if (blockStyle.marginTop > 0) {
+      currentPageNextY += blockStyle.marginTop;
+    }
+    if (blockStyle.paddingTop > 0) {
+      currentPageNextY += blockStyle.paddingTop;
+    }
 
-  currentTextBlock->layoutAndExtractLines(
-      renderer, fontId, effectiveWidth,
-      [this](const std::shared_ptr<TextBlock>& textBlock) { addLineToPage(textBlock); });
+    // Calculate effective width accounting for horizontal margins/padding
+    const int horizontalInset = blockStyle.totalHorizontalInset();
+    const uint16_t effectiveWidth =
+        (horizontalInset < viewportWidth) ? static_cast<uint16_t>(viewportWidth - horizontalInset) : viewportWidth;
+
+    currentTextBlock->layoutAndExtractLines(
+        renderer, fontId, effectiveWidth,
+        [this](const std::shared_ptr<TextBlock>& textBlock) { addLineToPage(textBlock); });
+
+    // Apply bottom spacing after the paragraph (stored in pixels)
+    if (blockStyle.marginBottom > 0) {
+      currentPageNextY += blockStyle.marginBottom;
+    }
+    if (blockStyle.paddingBottom > 0) {
+      currentPageNextY += blockStyle.paddingBottom;
+    }
+
+    // Extra paragraph spacing if enabled (default behavior)
+    if (extraParagraphSpacing) {
+      currentPageNextY += lineHeight / 2;
+    }
+  }
 
   // Fallback: transfer any remaining pending footnotes to current page.
   // Normally addLineToPage handles this via word-index tracking, but this catches
@@ -1542,18 +1580,5 @@ void ChapterHtmlSlimParser::makePages() {
       currentPage->addFootnote(fn.number, fn.href);
     }
     pendingFootnotes.clear();
-  }
-
-  // Apply bottom spacing after the paragraph (stored in pixels)
-  if (blockStyle.marginBottom > 0) {
-    currentPageNextY += blockStyle.marginBottom;
-  }
-  if (blockStyle.paddingBottom > 0) {
-    currentPageNextY += blockStyle.paddingBottom;
-  }
-
-  // Extra paragraph spacing if enabled (default behavior)
-  if (extraParagraphSpacing) {
-    currentPageNextY += lineHeight / 2;
   }
 }

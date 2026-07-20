@@ -10,8 +10,8 @@
 #include "parsers/ChapterHtmlSlimParser.h"
 
 namespace {
-// v28: added verticalMode + charSpacing for vertical text support.
-constexpr uint8_t SECTION_FILE_VERSION = 28;
+// v29: ruby serialization changed to presence-flag (breaking format).
+constexpr uint8_t SECTION_FILE_VERSION = 29;
 constexpr uint32_t HEADER_SIZE = sizeof(uint8_t) + sizeof(int) + sizeof(float) + sizeof(bool) + sizeof(uint8_t) +
                                  sizeof(uint16_t) + sizeof(uint16_t) + sizeof(uint16_t) + sizeof(bool) + sizeof(bool) +
                                  sizeof(uint8_t) + sizeof(bool) + sizeof(bool) + sizeof(uint8_t) +
