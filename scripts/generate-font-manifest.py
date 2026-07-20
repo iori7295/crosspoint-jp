@@ -148,7 +148,7 @@ def scan_cpfont_files(input_dir: Path) -> dict[str, list[Path]]:
 
 
 def build_manifest(
-    families: dict[str, list[Path]], base_url: str, input_dir: Path = Path()
+    families: dict[str, list[Path]], base_url: str
 ) -> dict:
     """Build the manifest dict from discovered font families."""
     manifest_families = []
@@ -172,14 +172,9 @@ def build_manifest(
 
         file_entries = []
         for filepath in sorted(files, key=lambda p: p.name):
-            try:
-                rel = filepath.relative_to(input_dir)
-                name = str(rel)
-            except ValueError:
-                name = filepath.name
             file_entries.append(
                 {
-                    "name": name,
+                    "name": filepath.name,
                     "size": filepath.stat().st_size,
                     "crc32": compute_crc32(filepath),
                 }
@@ -258,7 +253,7 @@ def main():
     for name, files in sorted(families.items()):
         print(f"  {name}: {len(files)} files")
 
-    manifest = build_manifest(families, base_url, input_dir=Path(args.input))
+    manifest = build_manifest(families, base_url)
 
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
