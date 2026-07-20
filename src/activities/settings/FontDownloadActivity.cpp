@@ -51,6 +51,11 @@ void FontDownloadActivity::onWifiSelectionComplete(const bool success) {
   }
   requestUpdateAndWait();
 
+  // Free SD card font memory so TLS has enough contiguous heap for the
+  // certificate chain / handshake buffers during download (zrn-ns pattern).
+  sdFontSystem.unloadFonts(renderer);
+  LOG_DBG("FONT", "Unloaded SD fonts, heap=%d", ESP.getFreeHeap());
+
   if (!fetchAndParseManifest()) {
     {
       RenderLock lock(*this);
