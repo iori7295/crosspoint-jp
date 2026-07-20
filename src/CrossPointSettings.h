@@ -7,7 +7,7 @@
 class CrossPointSettings {
  private:
   // Private constructor for singleton
-  CrossPointSettings() = default;
+  CrossPointSettings() { vertical.charSpacing = 15; }
 
   // Static instance
   static CrossPointSettings instance;
@@ -115,6 +115,8 @@ class CrossPointSettings {
     PARAGRAPH_ALIGNMENT_COUNT
   };
 
+  enum WRITING_MODE { WM_AUTO = 0, WM_HORIZONTAL = 1, WM_VERTICAL = 2, WRITING_MODE_COUNT };
+
   // Auto-sleep timeout options (in minutes)
   enum SLEEP_TIMEOUT {
     SLEEP_1_MIN = 0,
@@ -200,6 +202,24 @@ class CrossPointSettings {
   // Set once an NTP sync succeeds. Used to skip re-syncing on every WiFi connect.
   // Resetting to 0 (e.g. via the web UI) forces a re-sync on next WiFi connect.
   uint8_t clockHasBeenSynced = 0;
+  // Direction-specific settings for horizontal / vertical reading
+  struct DirectionSettings {
+    uint8_t fontFamily = NOTOSERIF;
+    char sdFontFamilyName[32] = "";
+    uint8_t fontSize = MEDIUM;
+    uint8_t lineSpacing = NORMAL;
+    uint8_t charSpacing = 0;
+    uint8_t paragraphAlignment = JUSTIFIED;
+    uint8_t extraParagraphSpacing = 0;
+    uint8_t hyphenationEnabled = 0;
+    uint8_t screenMargin = 5;
+    uint8_t firstLineIndent = 1;
+    uint8_t textAntiAliasing = 0;
+  };
+  DirectionSettings horizontal;
+  DirectionSettings vertical;
+  // Writing mode
+  uint8_t writingMode = WM_AUTO;
   // Text rendering settings
   uint8_t extraParagraphSpacing = 1;
   uint8_t textAntiAliasing = 1;
@@ -286,6 +306,12 @@ class CrossPointSettings {
 
   uint16_t getPowerButtonDuration() const {
     return (shortPwrBtn == CrossPointSettings::SHORT_PWRBTN::SLEEP) ? 10 : 400;
+  }
+  DirectionSettings& getDirectionSettings(bool isVertical) {
+    return isVertical ? vertical : horizontal;
+  }
+  const DirectionSettings& getDirectionSettings(bool isVertical) const {
+    return isVertical ? vertical : horizontal;
   }
   int getReaderFontId() const;
 
