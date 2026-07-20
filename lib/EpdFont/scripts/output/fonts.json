@@ -10,32 +10,32 @@
       ],
       "files": [
         {
-          "name": "GenEiKoburiMincho_10.cpfont",
+          "name": "GenEiKoburiMincho/GenEiKoburiMincho_10.cpfont",
           "size": 1448809,
           "crc32": 2941808743
         },
         {
-          "name": "GenEiKoburiMincho_12.cpfont",
+          "name": "GenEiKoburiMincho/GenEiKoburiMincho_12.cpfont",
           "size": 1994086,
           "crc32": 886928555
         },
         {
-          "name": "GenEiKoburiMincho_14.cpfont",
+          "name": "GenEiKoburiMincho/GenEiKoburiMincho_14.cpfont",
           "size": 2539099,
           "crc32": 1398231823
         },
         {
-          "name": "GenEiKoburiMincho_16.cpfont",
+          "name": "GenEiKoburiMincho/GenEiKoburiMincho_16.cpfont",
           "size": 3167976,
           "crc32": 1453447653
         },
         {
-          "name": "GenEiKoburiMincho_18.cpfont",
+          "name": "GenEiKoburiMincho/GenEiKoburiMincho_18.cpfont",
           "size": 4186984,
           "crc32": 1324858206
         },
         {
-          "name": "GenEiKoburiMincho_8.cpfont",
+          "name": "GenEiKoburiMincho/GenEiKoburiMincho_8.cpfont",
           "size": 1084836,
           "crc32": 2539874436
         }
@@ -50,32 +50,32 @@
       ],
       "files": [
         {
-          "name": "NotoSansCJKjp_10.cpfont",
+          "name": "NotoSansCJKjp/NotoSansCJKjp_10.cpfont",
           "size": 5162850,
           "crc32": 142638230
         },
         {
-          "name": "NotoSansCJKjp_12.cpfont",
+          "name": "NotoSansCJKjp/NotoSansCJKjp_12.cpfont",
           "size": 7267756,
           "crc32": 1539885121
         },
         {
-          "name": "NotoSansCJKjp_14.cpfont",
+          "name": "NotoSansCJKjp/NotoSansCJKjp_14.cpfont",
           "size": 9737736,
           "crc32": 1042148849
         },
         {
-          "name": "NotoSansCJKjp_16.cpfont",
+          "name": "NotoSansCJKjp/NotoSansCJKjp_16.cpfont",
           "size": 11956447,
           "crc32": 445259021
         },
         {
-          "name": "NotoSansCJKjp_18.cpfont",
+          "name": "NotoSansCJKjp/NotoSansCJKjp_18.cpfont",
           "size": 14980343,
           "crc32": 2300600742
         },
         {
-          "name": "NotoSansCJKjp_8.cpfont",
+          "name": "NotoSansCJKjp/NotoSansCJKjp_8.cpfont",
           "size": 3822543,
           "crc32": 1794727293
         }
@@ -90,32 +90,32 @@
       ],
       "files": [
         {
-          "name": "NotoSerifCJKjp_10.cpfont",
+          "name": "NotoSerifCJKjp/NotoSerifCJKjp_10.cpfont",
           "size": 5266728,
           "crc32": 3339341665
         },
         {
-          "name": "NotoSerifCJKjp_12.cpfont",
+          "name": "NotoSerifCJKjp/NotoSerifCJKjp_12.cpfont",
           "size": 7450268,
           "crc32": 2851145022
         },
         {
-          "name": "NotoSerifCJKjp_14.cpfont",
+          "name": "NotoSerifCJKjp/NotoSerifCJKjp_14.cpfont",
           "size": 9987207,
           "crc32": 701668238
         },
         {
-          "name": "NotoSerifCJKjp_16.cpfont",
+          "name": "NotoSerifCJKjp/NotoSerifCJKjp_16.cpfont",
           "size": 12244629,
           "crc32": 635128583
         },
         {
-          "name": "NotoSerifCJKjp_18.cpfont",
+          "name": "NotoSerifCJKjp/NotoSerifCJKjp_18.cpfont",
           "size": 15398889,
           "crc32": 2324211610
         },
         {
-          "name": "NotoSerifCJKjp_8.cpfont",
+          "name": "NotoSerifCJKjp/NotoSerifCJKjp_8.cpfont",
           "size": 3907958,
           "crc32": 2008763678
         }
