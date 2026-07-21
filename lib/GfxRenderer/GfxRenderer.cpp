@@ -63,6 +63,15 @@ const uint8_t* GfxRenderer::getGlyphBitmap(const EpdFontData* fontData, const Ep
     // than crashing on a dangling/out-of-range pointer.
     return nullptr;
   }
+  // Built-in fonts: if the glyph came via the fallback chain from an SD card
+  // font's overflow (EpdFont::getGlyph fallback -> getGlyphInFont -> onGlyphMiss),
+  // retrieve the bitmap from that overflow buffer instead of using dataOffset.
+  if (fontData->fallback && fontData->fallback->glyphMissCtx) {
+    auto* fbSdFont = SdCardFont::fromMissCtx(fontData->fallback->glyphMissCtx);
+    if (fbSdFont->isOverflowGlyph(glyph)) {
+      return fbSdFont->getOverflowBitmap(glyph);
+    }
+  }
   // Built-in fonts keep all bitmaps resident in flash (fontData->bitmap).
   return &fontData->bitmap[glyph->dataOffset];
 }
@@ -262,6 +271,16 @@ static void renderCharImpl(const GfxRenderer& renderer, GfxRenderer::RenderMode 
   const uint8_t* bitmap = renderer.getGlyphBitmap(fontData, glyph);
 
   if (bitmap != nullptr) {
+    // Bounds check: ensure pixel loop won't read past the allocated bitmap.
+    const uint32_t needBytes = is2Bit
+        ? (static_cast<uint32_t>(width) * height + 3) / 4
+        : (static_cast<uint32_t>(width) * height + 7) / 8;
+    if (needBytes > glyph->dataLength) {
+      LOG_ERR("GFX", "OVERFLOW cp=U+%04X w=%d h=%d is2Bit=%d need=%u have=%u", cp, width, height, is2Bit, needBytes,
+              glyph->dataLength);
+      return;
+    }
+
     // For Normal:  outer loop advances screenY, inner loop advances screenX
     // For Rotated: outer loop advances screenX, inner loop advances screenY (in reverse)
     int outerBase, innerBase;
