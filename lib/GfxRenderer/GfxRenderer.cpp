@@ -58,22 +58,28 @@ const uint8_t* GfxRenderer::getGlyphBitmap(const EpdFontData* fontData, const Ep
         return fbSdFont->getOverflowBitmap(glyph);
       }
     }
-    // The on-disk bitmap is not resident in RAM. fontData->bitmap is invalid
-    // for SD card fonts outside the prewarm set; returning nullptr is safer
-    // than crashing on a dangling/out-of-range pointer.
-    return nullptr;
+    // Glyph is not in overflow — check fallback font's overflow (glyph may
+    // have been loaded there via the fallback chain in EpdFont::getGlyph).
+    if (fontData->fallback && fontData->fallback->glyphMissCtx) {
+      auto* fbSdFont = SdCardFont::fromMissCtx(fontData->fallback->glyphMissCtx);
+      if (fbSdFont->isOverflowGlyph(glyph)) {
+        return fbSdFont->getOverflowBitmap(glyph);
+      }
+    }
   }
-  // Built-in fonts: if the glyph came via the fallback chain from an SD card
-  // font's overflow (EpdFont::getGlyph fallback -> getGlyphInFont -> onGlyphMiss),
-  // retrieve the bitmap from that overflow buffer instead of using dataOffset.
+  // Fallback font's overflow (for built-in fonts with SD fallback).
   if (fontData->fallback && fontData->fallback->glyphMissCtx) {
     auto* fbSdFont = SdCardFont::fromMissCtx(fontData->fallback->glyphMissCtx);
     if (fbSdFont->isOverflowGlyph(glyph)) {
       return fbSdFont->getOverflowBitmap(glyph);
     }
   }
-  // Built-in fonts keep all bitmaps resident in flash (fontData->bitmap).
-  return &fontData->bitmap[glyph->dataOffset];
+  // Mini/normal bitmap path. For SD fonts in mini state (prewarmed),
+  // fontData->bitmap points to s.miniBitmap and glyph->dataOffset was
+  // rewritten to the mini bitmap offset by prewarmStyle(). For built-in
+  // fonts, fontData->bitmap is the flash-resident bitmap array.
+  if (fontData->bitmap) return &fontData->bitmap[glyph->dataOffset];
+  return nullptr;
 }
 
 void GfxRenderer::ensureSdCardFontReady(int fontId, const char* utf8Text, uint8_t styleMask) const {

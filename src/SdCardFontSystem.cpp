@@ -105,6 +105,7 @@ void SdCardFontSystem::ensureLoaded(GfxRenderer& renderer) {
 
 void SdCardFontSystem::unloadFonts(GfxRenderer& renderer) {
   manager_.unloadAll(renderer);
+  setupUiFontFallback();  // Clear dangling fallback pointers from unloaded fonts
 }
 
 int SdCardFontSystem::resolveFontId(const char* familyName, uint8_t /*fontSizeEnum*/) const {
