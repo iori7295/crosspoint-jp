@@ -50,9 +50,17 @@ const uint8_t* GfxRenderer::getGlyphBitmap(const EpdFontData* fontData, const Ep
     if (sdFont->isOverflowGlyph(glyph)) {
       return sdFont->getOverflowBitmap(glyph);  // may be nullptr for zero-width glyphs
     }
-    // Glyph is not in overflow — the on-disk bitmap is not resident in RAM.
-    // fontData->bitmap is invalid for SD card fonts outside the prewarm set;
-    // returning nullptr is safer than crashing on a dangling/out-of-range pointer.
+    // Glyph is not in overflow — check fallback font's overflow (glyph may
+    // have been loaded there via the fallback chain in EpdFont::getGlyph).
+    if (fontData->fallback && fontData->fallback->glyphMissCtx) {
+      auto* fbSdFont = SdCardFont::fromMissCtx(fontData->fallback->glyphMissCtx);
+      if (fbSdFont->isOverflowGlyph(glyph)) {
+        return fbSdFont->getOverflowBitmap(glyph);
+      }
+    }
+    // The on-disk bitmap is not resident in RAM. fontData->bitmap is invalid
+    // for SD card fonts outside the prewarm set; returning nullptr is safer
+    // than crashing on a dangling/out-of-range pointer.
     return nullptr;
   }
   // Built-in fonts keep all bitmaps resident in flash (fontData->bitmap).
