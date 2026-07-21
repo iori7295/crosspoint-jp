@@ -1,12 +1,14 @@
 #include "Lyra3CoversTheme.h"
 
 #include <GfxRenderer.h>
+#include <FontCacheManager.h>
 #include <HalStorage.h>
 
 #include <cstdint>
 #include <string>
 #include <vector>
 
+#include "CrossPointSettings.h"
 #include "RecentBooksStore.h"
 #include "components/UITheme.h"
 #include "components/icons/cover.h"
@@ -88,6 +90,10 @@ void Lyra3CoversTheme::drawRecentBookCover(GfxRenderer& renderer, Rect rect, con
 
       const int maxLineWidth = tileWidth - 2 * hPaddingInSelection;
 
+      // Prewarm SD font for CJK glyphs in book titles.
+      if (auto* fcm = renderer.getFontCacheManager()) {
+        fcm->prewarmCache(SETTINGS.getReaderFontId(), recentBooks[i].title.c_str(), 0x01);
+      }
       auto titleLines = renderer.wrappedText(SMALL_FONT_ID, recentBooks[i].title.c_str(), maxLineWidth, 3);
 
       const int titleLineHeight = renderer.getLineHeight(SMALL_FONT_ID);
