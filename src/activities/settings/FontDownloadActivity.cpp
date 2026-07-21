@@ -375,6 +375,7 @@ void FontDownloadActivity::downloadFamily(ManifestFamily& family) {
   }
 
   fontInstaller_.refreshRegistry();
+  sdFontSystem.ensureLoaded(renderer);
   family.installed = true;
   family.hasUpdate = false;
 
