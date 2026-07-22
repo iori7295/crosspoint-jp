@@ -2,6 +2,8 @@
 #include <Epub.h>
 #include <Epub/FootnoteEntry.h>
 #include <Epub/Section.h>
+#include <Epub/VerticalSection.h>
+#include <Epub/blocks/VerticalTextBlock.h>
 
 #include <optional>
 
@@ -13,6 +15,8 @@
 class EpubReaderActivity final : public Activity {
   std::shared_ptr<Epub> epub;
   std::unique_ptr<Section> section = nullptr;
+  std::unique_ptr<VerticalSection> verticalSection_ = nullptr;
+  bool verticalMode_ = false;  // true when rendering with VerticalSection
   int currentSpineIndex = 0;
   int nextPageNumber = 0;
   std::optional<uint16_t> pendingPageJump;
@@ -60,6 +64,20 @@ class EpubReaderActivity final : public Activity {
                       int orientedMarginBottom, int orientedMarginLeft);
   void renderStatusBar() const;
   void silentIndexNextChapterIfNeeded(uint16_t viewportWidth, uint16_t viewportHeight);
+  // Section loading/rendering helpers for horizontal vs vertical mode.
+  // Loads (or builds) the section cache for the current spine index.
+  // Returns true on success; on failure resets the section and returns false.
+  bool loadSectionForCurrentMode(uint16_t viewportWidth, uint16_t viewportHeight);
+  // Returns current page count from whichever section is active.
+  int getCurrentPageCount() const;
+  // Returns current page number from whichever section is active.
+  int getCurrentPage() const;
+  // Sets current page on whichever section is active.
+  void setCurrentPage(int page);
+  // Returns true when a section (horizontal or vertical) is loaded.
+  bool hasActiveSection() const { return section != nullptr || verticalSection_ != nullptr; }
+  // Reset both section pointers.
+  void resetSection() { section.reset(); verticalSection_.reset(); }
   bool saveProgress(int spineIndex, int currentPage, int pageCount);
   // Jump to a percentage of the book (0-100), mapping it to spine and page.
   void jumpToPercent(int percent);
