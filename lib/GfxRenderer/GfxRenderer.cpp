@@ -66,16 +66,17 @@ const uint8_t* GfxRenderer::getGlyphBitmap(const EpdFontData* fontData, const Ep
       return fbSdFont->getOverflowBitmap(glyph);
     }
   }
-  // Determine which bitmap base to use by checking the glyph pointer origin.
-  // Flash-mapped addresses (0x3c...) = built-in font → use fontData->bitmap.
-  // Heap addresses (0x3f...) = SD font (mini data via fallback) → use fallback->bitmap.
-  const uintptr_t glyphAddr = reinterpret_cast<uintptr_t>(glyph);
-  const bool glyphIsBuiltin = (glyphAddr >= 0x3C000000u && glyphAddr < 0x3D000000u);
-  if (glyphIsBuiltin) {
-    if (fontData->bitmap) return &fontData->bitmap[glyph->dataOffset];
-  } else if (fontData->fallback && fontData->fallback->bitmap) {
-    return &fontData->fallback->bitmap[glyph->dataOffset];
+  // Built-in font with SD fallback: the glyph may have come from the fallback's
+  // mini data (heap address). Detect by checking the glyph pointer region.
+  if (!fontData->glyphMissCtx && fontData->fallback) {
+    const uintptr_t addr = reinterpret_cast<uintptr_t>(glyph);
+    if (addr < 0x3C000000u || addr >= 0x3D000000u) {
+      if (fontData->fallback->bitmap) return &fontData->fallback->bitmap[glyph->dataOffset];
+    }
   }
+  // Normal path: glyph is from the current font's own data (built-in flash or
+  // SD mini/regular). dataOffset was rewritten to the local bitmap offset.
+  if (fontData->bitmap) return &fontData->bitmap[glyph->dataOffset];
   return nullptr;
 }
 
