@@ -159,6 +159,8 @@ void EpubReaderActivity::onEnter() {
   // NOTE: This affects layout math and must be applied before any render calls.
   ReaderUtils::applyOrientation(renderer, SETTINGS.orientation);
 
+  detectVerticalMode();
+
   epub->setupCacheDir();
 
   HalFile f;
@@ -201,6 +203,26 @@ void EpubReaderActivity::onEnter() {
 
   // Trigger first update
   requestUpdate();
+}
+
+void EpubReaderActivity::detectVerticalMode() {
+  savedVerticalTextMode_ = SETTINGS.verticalTextMode;
+  if (!epub) return;
+  const std::string& lang = epub->getLanguage();
+  // Match "ja", "ja-JP", "jpn" etc.
+  const bool isJapanese = (lang.size() >= 2 && lang[0] == 'j' && lang[1] == 'a') ||
+                          lang == "jpn";
+  if (isJapanese && SETTINGS.verticalTextMode == 0) {
+    // Japanese EPUB with default setting → enable vertical mode.
+    // This only changes the runtime value; saveToFile() is NOT called,
+    // so the persisted JSON stays unchanged.
+    SETTINGS.verticalTextMode = 1;
+    LOG_DBG("ERS", "Auto-detect: language=%s → vertical mode ON", lang.c_str());
+  } else if (!isJapanese && SETTINGS.verticalTextMode == 1) {
+    // Non-Japanese EPUB with vertical mode enabled → turn it off.
+    SETTINGS.verticalTextMode = 0;
+    LOG_DBG("ERS", "Auto-detect: language=%s → vertical mode OFF", lang.c_str());
+  }
 }
 
 void EpubReaderActivity::onExit() {
@@ -1362,6 +1384,9 @@ CrossPointPosition EpubReaderActivity::getCurrentPosition() const {
 }
 
 bool EpubReaderActivity::loadSectionForCurrentMode(uint16_t viewportWidth, uint16_t viewportHeight) {
+  // Note: SETTINGS.verticalTextMode may have been modified by detectVerticalMode()
+  // at book-open time, but that change is NOT persisted to JSON (no saveToFile call),
+  // so it doesn't affect the global setting across sessions.
   const bool wantVertical = SETTINGS.isVerticalMode();
   const auto filepath = epub->getSpineItem(currentSpineIndex).href;
   LOG_DBG("ERS", "Loading file: %s, index: %d, mode=%s", filepath.c_str(), currentSpineIndex,
