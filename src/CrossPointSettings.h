@@ -268,12 +268,18 @@ class CrossPointSettings {
   uint8_t language = 0;
   // Quick Resume: keep current content visible with moon icon instead of showing a static sleep screen.
   uint8_t quickResumeSleepScreen = QUICK_RESUME_NEVER;
-  // Vertical text mode for Japanese EPUBs (0 = horizontal, 1 = vertical).
-  // Not persisted via binary settings — set per-book from EPUB language auto-detection.
-  uint8_t verticalTextMode = 0;
+  // Vertical text mode preference. Persisted via JSON as uint8_t.
+  // 0 = auto (follow EPUB language), 1 = force on, 2 = force off.
+  enum VerticalTextModePref : uint8_t { VM_AUTO = 0, VM_ON = 1, VM_OFF = 2, VM_COUNT };
+  uint8_t verticalTextMode = VM_AUTO;
 
   // Returns true when the reader should use vertical layout for the current book.
-  bool isVerticalMode() const { return verticalTextMode != 0; }
+  // Pass isJapaneseBook=true when the EPUB's dc:language matches Japanese.
+  bool isVerticalMode(bool isJapaneseBook = false) const {
+    if (verticalTextMode == VM_ON) return true;
+    if (verticalTextMode == VM_OFF) return false;
+    return isJapaneseBook;  // VM_AUTO
+  }
 
   ~CrossPointSettings() = default;
 

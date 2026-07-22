@@ -16,9 +16,6 @@ class EpubReaderActivity final : public Activity {
   std::shared_ptr<Epub> epub;
   std::unique_ptr<Section> section = nullptr;
   std::unique_ptr<VerticalSection> verticalSection_ = nullptr;
-  // The verticalTextMode value loaded from JSON at the start of this session.
-  // Used to detect whether the user has explicitly toggled the setting.
-  uint8_t savedVerticalTextMode_ = 0;
   int currentSpineIndex = 0;
   int nextPageNumber = 0;
   std::optional<uint16_t> pendingPageJump;
@@ -82,10 +79,8 @@ class EpubReaderActivity final : public Activity {
   bool isVerticalActive() const { return verticalSection_ != nullptr; }
   // Reset both section pointers.
   void resetSection() { section.reset(); verticalSection_.reset(); }
-  // Detect EPUB language and set runtime verticalTextMode (without persisting).
-  void detectVerticalMode();
-  // Returns true if the user has explicitly touched the vertical setting in this session.
-  bool userTouchedVerticalSetting() const { return SETTINGS.verticalTextMode != savedVerticalTextMode_; }
+  // Returns true if the current EPUB's language is Japanese (for vertical mode auto-detection).
+  bool isJapaneseBook() const;
   bool saveProgress(int spineIndex, int currentPage, int pageCount);
   // Jump to a percentage of the book (0-100), mapping it to spine and page.
   void jumpToPercent(int percent);
