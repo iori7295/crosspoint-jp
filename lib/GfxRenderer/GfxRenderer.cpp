@@ -167,7 +167,7 @@ static inline void rotateCoordinates(const GfxRenderer::Orientation orientation,
   }
 }
 
-enum class TextRotation { None, Rotated90CW };
+enum class TextRotation { None, Rotated90CW, Rotated90CCW };
 
 // Shared glyph rendering logic for normal and rotated text.
 // Coordinate mapping and cursor advance direction are selected at compile time via the template parameter.
@@ -271,6 +271,12 @@ static void renderCharImpl(const GfxRenderer& renderer, GfxRenderer::RenderMode 
     if (!renderer.glyphIntersectsStrip(ob, ib - (width - 1), ob + height - 1, ib)) {
       return;
     }
+  } else if constexpr (rotation == TextRotation::Rotated90CCW) {
+    const int ob = cursorX + top;
+    const int ib = cursorY + left;
+    if (!renderer.glyphIntersectsStrip(ob - (height - 1), ib, ob, ib + (width - 1))) {
+      return;
+    }
   } else {
     const int gx0 = cursorX + left;
     const int gy0 = cursorY - top;
@@ -298,6 +304,9 @@ static void renderCharImpl(const GfxRenderer& renderer, GfxRenderer::RenderMode 
     if constexpr (rotation == TextRotation::Rotated90CW) {
       outerBase = cursorX + fontData->ascender - top;  // screenX = outerBase + glyphY
       innerBase = cursorY - left;                      // screenY = innerBase - glyphX
+    } else if constexpr (rotation == TextRotation::Rotated90CCW) {
+      outerBase = cursorX + top;    // screenX = outerBase - glyphY; baseline at cursorX
+      innerBase = cursorY + left;   // screenY = innerBase + glyphX
     } else {
       outerBase = cursorY - top;   // screenY = outerBase + glyphY
       innerBase = cursorX + left;  // screenX = innerBase + glyphX
@@ -312,6 +321,9 @@ static void renderCharImpl(const GfxRenderer& renderer, GfxRenderer::RenderMode 
           if constexpr (rotation == TextRotation::Rotated90CW) {
             screenX = outerCoord;
             screenY = innerBase - glyphX;
+          } else if constexpr (rotation == TextRotation::Rotated90CCW) {
+            screenX = outerBase - glyphY;
+            screenY = innerBase + glyphX;
           } else {
             screenX = innerBase + glyphX;
             screenY = outerCoord;
@@ -347,6 +359,9 @@ static void renderCharImpl(const GfxRenderer& renderer, GfxRenderer::RenderMode 
           if constexpr (rotation == TextRotation::Rotated90CW) {
             screenX = outerCoord;
             screenY = innerBase - glyphX;
+          } else if constexpr (rotation == TextRotation::Rotated90CCW) {
+            screenX = outerBase - glyphY;
+            screenY = innerBase + glyphX;
           } else {
             screenX = innerBase + glyphX;
             screenY = outerCoord;
@@ -1950,4 +1965,151 @@ void GfxRenderer::getOrientedViewableTRBL(int* outTop, int* outRight, int* outBo
       *outLeft = VIEWABLE_MARGIN_TOP;
       break;
   }
+}
+
+bool GfxRenderer::getGlyphMetrics(const int fontId, const uint32_t cp, const EpdFontFamily::Style style, int* left,
+                                  int* width, int* top, int* height) const {
+  if (!left || !width || !top || !height) return false;
+  const auto fontIt = fontMap.find(fontId);
+  if (fontIt == fontMap.end()) {
+    LOG_ERR("GFX", "Font %d not found", fontId);
+    return false;
+  }
+  const EpdGlyph* glyph = fontIt->second.getGlyph(cp, style);
+  if (!glyph) return false;
+  *left = glyph->left;
+  *width = glyph->width;
+  *top = glyph->top;
+  *height = glyph->height;
+  return true;
+}
+
+void GfxRenderer::drawTextRotated90CCW(const int fontId, const int x, const int y, const char* text, const bool black,
+                                       const EpdFontFamily::Style style) const {
+  if (text == nullptr || *text == '\0') return;
+
+  const auto fontIt = fontMap.find(fontId);
+  if (fontIt == fontMap.end()) {
+    LOG_ERR("GFX", "Font %d not found", fontId);
+    return;
+  }
+
+  const auto& font = fontIt->second;
+  int lastBaseY = y;
+  int32_t prevAdvanceFP = 0;
+
+  uint32_t cp;
+  uint32_t prevCp = 0;
+  while ((cp = utf8NextCodepoint(reinterpret_cast<const uint8_t**>(&text)))) {
+    if (cp >= 0x0591 && cp <= 0x05C7) continue;
+    if (utf8IsCombiningMark(cp)) continue;
+
+    cp = font.applyLigatures(cp, text, style);
+
+    if (prevCp != 0) {
+      const auto kernFP = font.getKerning(prevCp, cp, style);
+      lastBaseY += fp4::toPixel(prevAdvanceFP + kernFP);
+    }
+
+    const EpdGlyph* glyph = font.getGlyph(cp, style);
+    prevAdvanceFP = glyph ? glyph->advanceX : 0;
+
+    renderCharImpl<TextRotation::Rotated90CCW>(*this, renderMode, font, cp, x, lastBaseY, black, style);
+    prevCp = cp;
+  }
+}
+
+void GfxRenderer::drawCharVerticalCornerTopRight(const int fontId, const int cellLeftX, const int cellTopY,
+                                                 const int cellSize, const uint32_t cp, const bool black,
+                                                 const EpdFontFamily::Style style) const {
+  const auto fontIt = fontMap.find(fontId);
+  if (fontIt == fontMap.end()) {
+    LOG_ERR("GFX", "Font %d not found", fontId);
+    return;
+  }
+  const auto& font = fontIt->second;
+  const EpdGlyph* glyph = font.getGlyph(cp, style);
+  if (!glyph) return;
+
+  const int top = glyph->top;
+  const int height = glyph->height;
+  const int left = glyph->left;
+  const int width = glyph->width;
+  const int padX = std::max(1, cellSize / 4);
+
+  const int cursorX = cellLeftX + cellSize - padX - width - left;
+
+  int topPos = cellTopY + cellSize / 2 - height / 2;
+  const int minTop = cellTopY + 1;
+  const int maxTop = cellTopY + std::max(1, cellSize - height - 1);
+  topPos = std::clamp(topPos, minTop, maxTop);
+  const int cursorY = topPos + top;
+
+  renderCharImpl<TextRotation::None>(*this, renderMode, font, cp, cursorX, cursorY, black, style);
+}
+
+void GfxRenderer::drawCharVerticalRotatedInCell(const int fontId, const int cellLeftX, const int cellTopY,
+                                                const int cellSize, const uint32_t cp, const int shiftType,
+                                                const bool black, const EpdFontFamily::Style style) const {
+  if (cp == 0x2026 || cp == 0x2025) {
+    const int dotCount = (cp == 0x2026) ? 3 : 2;
+    const int dotSize = std::max(1, cellSize / 10);
+    const int gap = std::max(1, cellSize / 10);
+    const int totalH = dotCount * dotSize + (dotCount - 1) * gap;
+    const auto fontIt2 = fontMap.find(fontId);
+    int ellipsisExtra = 0;
+    if (fontIt2 != fontMap.end()) {
+      const EpdFontData* fd = fontIt2->second.getData(style);
+      if (fd && cellSize > 0) {
+        const int pct = fd->ascender * 100 / cellSize;
+        if (pct > 100) ellipsisExtra = cellSize * (pct - 100) / 30;
+      }
+    }
+    int startY = cellTopY + std::max(1, cellSize / 3) + cellSize / 3 + ellipsisExtra;
+    const int maxStartY = cellTopY + std::max(1, cellSize - totalH - 1) + ellipsisExtra;
+    if (startY > maxStartY) startY = maxStartY;
+    const int startX = cellLeftX + (cellSize - dotSize) / 2;
+    for (int i = 0; i < dotCount; i++) {
+      const int y = startY + i * (dotSize + gap);
+      fillRect(startX, y, dotSize, dotSize, black);
+    }
+    return;
+  }
+
+  const auto fontIt = fontMap.find(fontId);
+  if (fontIt == fontMap.end()) {
+    LOG_ERR("GFX", "Font %d not found", fontId);
+    return;
+  }
+  const auto& font = fontIt->second;
+  const EpdGlyph* glyph = font.getGlyph(cp, style);
+  if (!glyph) return;
+
+  const int rotatedW = glyph->height;
+  const int rotatedH = glyph->width;
+
+  const auto fontItAsc = fontMap.find(fontId);
+  int ascenderExtra = 0;
+  if (fontItAsc != fontMap.end()) {
+    const EpdFontData* fd = fontItAsc->second.getData(style);
+    if (fd && cellSize > 0) {
+      const int pct = fd->ascender * 100 / cellSize;
+      if (pct > 110) ascenderExtra = cellSize * (pct - 100) / 25;
+    }
+  }
+
+  int nudgeX = 0, nudgeY = 0;
+  if (shiftType == 1 || shiftType == 2) {
+    nudgeY = cellSize / 6 + ascenderExtra;
+  } else if (shiftType == 3) {
+    nudgeX = cellSize / 12;
+    nudgeY = cellSize / 8;
+  } else if (shiftType == 4) {
+    nudgeY = cellSize / 4;
+  }
+
+  const int cursorX = cellLeftX + cellSize / 2 + nudgeX;
+  const int cursorY = cellTopY + cellSize / 2 + rotatedH / 2 + nudgeY;
+
+  renderCharImpl<TextRotation::Rotated90CCW>(*this, renderMode, font, cp, cursorX, cursorY, black, style);
 }
