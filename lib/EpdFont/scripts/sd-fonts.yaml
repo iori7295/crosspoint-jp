@@ -1,7 +1,8 @@
 families:
   - name: NotoSansCJKjp
     description: "ゴシック体 (Noto Sans CJK JP)"
-    intervals: cjk
+    intervals: cjk,punctuation,symbols
+    codepoints_file: codepoints/japanese_jis0213.txt
     sizes: [8, 10, 12, 14, 16, 18]
     styles:
       regular:    {url: "https://github.com/notofonts/noto-cjk/raw/main/Sans/OTF/Japanese/NotoSansCJKjp-Regular.otf"}
@@ -9,7 +10,8 @@ families:
 
   - name: NotoSerifCJKjp
     description: "明朝体 (Noto Serif CJK JP)"
-    intervals: cjk
+    intervals: cjk,punctuation,symbols
+    codepoints_file: codepoints/japanese_jis0213.txt
     sizes: [8, 10, 12, 14, 16, 18]
     styles:
       regular:    {url: "https://github.com/notofonts/noto-cjk/raw/main/Serif/OTF/Japanese/NotoSerifCJKjp-Regular.otf"}
@@ -17,7 +19,8 @@ families:
 
   - name: GenEiKoburiMincho
     description: "源暎こぶり明朝 (GenEi Koburi Mincho)"
-    intervals: cjk
+    intervals: cjk,punctuation,symbols
+    codepoints_file: codepoints/japanese_jis0213.txt
     sizes: [8, 10, 12, 14, 16, 18]
     styles:
       regular:    {path: "scripts/downloaded_fonts/GenEiKoburiMincho/GenEiKoburiMin6-R.ttf"}

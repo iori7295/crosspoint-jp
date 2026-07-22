@@ -917,6 +917,10 @@ def main():
                         help="Fallback font file for italic style.")
     parser.add_argument("--fallback-bolditalic", dest="fallback_bolditalic",
                         help="Fallback font file for bold-italic style.")
+    parser.add_argument("--codepoints-file", dest="codepoints_file",
+                        help="Whitelist file of allowed codepoints (hex, one per line). "
+                             "When specified, only codepoints present in both the intervals "
+                             "and this file are included in the output.")
 
     args = parser.parse_args()
 
@@ -958,6 +962,46 @@ def main():
         sys.exit(1)
 
     intervals = resolve_intervals(args.intervals)
+
+    # Apply codepoints whitelist filter if specified
+    if args.codepoints_file:
+        allowed = set()
+        with open(args.codepoints_file, "r") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                allowed.add(int(line, 16))
+        filtered = []
+        for start, end in intervals:
+            run_start = None
+            for cp in range(start, end + 1):
+                if cp in allowed:
+                    if run_start is None:
+                        run_start = cp
+                else:
+                    if run_start is not None:
+                        filtered.append((run_start, cp - 1))
+                        run_start = None
+            if run_start is not None:
+                filtered.append((run_start, end))
+
+        # Merge intervals with small gaps to reduce interval count.
+        GAP_TOLERANCE = 4
+        if len(filtered) > 1:
+            merged = [filtered[0]]
+            for start, end in filtered[1:]:
+                prev_start, prev_end = merged[-1]
+                if start - prev_end - 1 <= GAP_TOLERANCE:
+                    merged[-1] = (prev_start, end)
+                else:
+                    merged.append((start, end))
+            filtered = merged
+
+        before = sum(e - s + 1 for s, e in intervals)
+        after = sum(e - s + 1 for s, e in filtered)
+        print(f"  Codepoints filter: {before} -> {after} codepoints, {len(filtered)} intervals ({len(allowed)} in whitelist)", file=sys.stderr)
+        intervals = filtered
 
     # Determine sizes
     if args.sizes:
