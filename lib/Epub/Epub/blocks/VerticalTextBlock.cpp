@@ -3,6 +3,8 @@
 
 #include <cstring>
 
+#include <algorithm>
+
 #include "GfxRenderer.h"
 #include "Kinsoku.h"
 
@@ -58,21 +60,72 @@ void drawGlyphs(GfxRenderer& renderer, const VerticalPage& page, int fontId, int
 
     if (g.renderKind == VerticalGlyph::RotatedPunct) {
       const int shiftType = Kinsoku::verticalShiftType(g.codepoint);
-      if (g.codepoint == 0x2025 || g.codepoint == 0x2026) {
-        dy += std::max(1, (cellPx * 5) / 8);
-      } else if (shiftType == 4) {
-        // Dashes/chōonpu sat visibly low in their cell (device photo, kyokasho) -- a
-        // quarter cell less down-shift than the ellipsis dot stack.
-        dy += std::max(1, (cellPx * 3) / 8);
+      const auto style = static_cast<EpdFontFamily::Style>(g.style);
+      // Ellipsis (…/‥) are rendered as vertical dot stacks rather than rotated glyphs,
+      // because the horizontal-oriented glyph looks too tall/ink-heavy when rotated.
+      if (g.codepoint == 0x2026 || g.codepoint == 0x2025) {
+        int dotDy = dy + std::max(1, (cellPx * 5) / 8);
+        const int dotCount = (g.codepoint == 0x2026) ? 3 : 2;
+        const int dotSize = std::max(1, cellPx / 10);
+        const int gap = std::max(1, cellPx / 10);
+        const int totalH = dotCount * dotSize + (dotCount - 1) * gap;
+        int gl = 0, gw = 0, gt = 0, gh = 0;
+        int ellipsisExtra = 0;
+        if (renderer.getGlyphMetrics(fontId, 0x6F22, style, &gl, &gw, &gt, &gh) && cellPx > 0 && gh > 0) {
+          const int pct = gt * 100 / cellPx;
+          if (pct > 100) ellipsisExtra = cellPx * (pct - 100) / 30;
+        }
+        int startY = dotDy + std::max(1, cellPx / 3) + cellPx / 3 + ellipsisExtra;
+        const int maxStartY = dotDy + std::max(1, cellPx - totalH - 1) + ellipsisExtra;
+        if (startY > maxStartY) startY = maxStartY;
+        const int startX = dx + (cellPx - dotSize) / 2;
+        for (int i = 0; i < dotCount; i++) {
+          renderer.fillRect(startX, startY + i * (dotSize + gap), dotSize, dotSize, black);
+        }
+      } else {
+        // Rotated punctuation: position and render via 90° CCW rotation.
+        int rotatedDy = dy;
+        if (shiftType == 4) {
+          rotatedDy += std::max(1, (cellPx * 3) / 8);
+        }
+        int gl = 0, gw = 0, gt = 0, gh = 0;
+        (void)renderer.getGlyphMetrics(fontId, g.codepoint, style, &gl, &gw, &gt, &gh);
+        int ascenderExtra = 0;
+        if (cellPx > 0 && gh > 0) {
+          const int pct = gt * 100 / cellPx;
+          if (pct > 110) ascenderExtra = cellPx * (pct - 100) / 25;
+        }
+        int nudgeX = 0, nudgeY = 0;
+        if (shiftType == 1 || shiftType == 2) {
+          nudgeY = cellPx / 6 + ascenderExtra;
+        } else if (shiftType == 3) {
+          nudgeX = cellPx / 12;
+          nudgeY = cellPx / 8;
+        }
+        const int rCursorX = dx + cellPx / 2 + nudgeX;
+        const int rCursorY = rotatedDy + cellPx / 2 + gh / 2 + nudgeY;
+        std::string utf8Buf;
+        encodeCodepoint(g.codepoint, utf8Buf);
+        renderer.drawTextRotated90CCW(fontId, rCursorX, rCursorY, utf8Buf.c_str(), black, style);
       }
-      renderer.drawCharVerticalRotatedInCell(fontId, dx, dy, cellPx, g.codepoint, shiftType, black,
-                                             static_cast<EpdFontFamily::Style>(g.style));
       continue;
     }
 
     if (g.renderKind == VerticalGlyph::SmallKanaCorner) {
-      renderer.drawCharVerticalCornerTopRight(fontId, dx, dy, cellPx, g.codepoint, black,
-                                              static_cast<EpdFontFamily::Style>(g.style));
+      const auto style = static_cast<EpdFontFamily::Style>(g.style);
+      int gl = 0, gw = 0, gt = 0, gh = 0;
+      if (renderer.getGlyphMetrics(fontId, g.codepoint, style, &gl, &gw, &gt, &gh)) {
+        const int padX = std::max(1, cellPx / 4);
+        const int cursorX = dx + cellPx - padX - gw - gl;
+        int topPos = dy + cellPx / 2 - gh / 2;
+        const int minTop = dy + 1;
+        const int maxTop = dy + std::max(1, cellPx - gh - 1);
+        topPos = std::clamp(topPos, minTop, maxTop);
+        const int cursorY = topPos + gt;
+        std::string utf8Buf;
+        encodeCodepoint(g.codepoint, utf8Buf);
+        renderer.drawText(fontId, cursorX, cursorY, utf8Buf.c_str(), black, style);
+      }
       continue;
     }
 
