@@ -16,7 +16,6 @@ class EpubReaderActivity final : public Activity {
   std::shared_ptr<Epub> epub;
   std::unique_ptr<Section> section = nullptr;
   std::unique_ptr<VerticalSection> verticalSection_ = nullptr;
-  bool verticalMode_ = false;  // true when rendering with VerticalSection
   int currentSpineIndex = 0;
   int nextPageNumber = 0;
   std::optional<uint16_t> pendingPageJump;
@@ -76,6 +75,8 @@ class EpubReaderActivity final : public Activity {
   void setCurrentPage(int page);
   // Returns true when a section (horizontal or vertical) is loaded.
   bool hasActiveSection() const { return section != nullptr || verticalSection_ != nullptr; }
+  // Returns true when the active section is vertical (derived, not stored).
+  bool isVerticalActive() const { return verticalSection_ != nullptr; }
   // Reset both section pointers.
   void resetSection() { section.reset(); verticalSection_.reset(); }
   bool saveProgress(int spineIndex, int currentPage, int pageCount);
