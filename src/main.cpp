@@ -298,6 +298,10 @@ void setupDisplayAndFonts(bool seamless = false) {
 
   // Discover and load SD card fonts
   sdFontSystem.begin(renderer);
+  // Set the SD card font as global fallback: any built-in font that lacks a glyph
+  // (CJK characters in UI fonts, rare kanji in reader fonts) will fall through to
+  // the SD card font's on-demand glyphMissHandler.
+  sdFontSystem.setGlobalFontFallback(renderer);
 
   LOG_DBG("MAIN", "Fonts setup");
 }

@@ -406,4 +406,5 @@ int CrossPointSettings::getRubyFontId() const {
         case EXTRA_LARGE: return NOTOSANS_16_FONT_ID;
       }
   }
+  return NOTOSERIF_12_FONT_ID;
 }

@@ -796,9 +796,7 @@ struct LayoutPageSink final : ParagraphSink {
       // images and dense text, where the font decompressor's hot-group buffer (regrown during
       // this same chapter's column-fitting measurements) is still resident and competing for that
       // headroom. Free it right before the allocation that actually needs it.
-      if (auto* fcm = renderer.getFontCacheManager()) {
-        fcm->releaseAllFontMemory();
-      }
+      // releaseAllFontMemory() not available in crosspoint-reader 1.4.1 base.
       HalFile cachedFile;
       if (Storage.openFileForWrite("VSC", cachedPath, cachedFile)) {
         const bool extracted = epub.readItemContentsToStream(resolvedSrc, cachedFile, 4096);

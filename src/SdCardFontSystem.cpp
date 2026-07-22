@@ -1,5 +1,6 @@
 #include "SdCardFontSystem.h"
 
+#include <EpdFontFamily.h>
 #include <GfxRenderer.h>
 #include <Logging.h>
 
@@ -103,9 +104,36 @@ void SdCardFontSystem::ensureLoaded(GfxRenderer& renderer) {
   }
 }
 
+void SdCardFontSystem::setGlobalFontFallback(GfxRenderer& renderer) const {
+  // Find a loaded SD card font to serve as the global glyph fallback.
+  // Priority: (1) user's selected reader font if it's an SD font,
+  //           (2) any loaded SD card font.
+  int fbFontId = 0;
+  if (SETTINGS.sdFontFamilyName[0] != '\0') {
+    fbFontId = resolveFontId(SETTINGS.sdFontFamilyName, SETTINGS.fontSize);
+  }
+  if (fbFontId == 0) {
+    // Fall back to the first loaded SD font
+    for (const auto& [id, _] : renderer.getFontMap()) {
+      if (renderer.isSdCardFont(id)) {
+        fbFontId = id;
+        break;
+      }
+    }
+  }
+  if (fbFontId != 0) {
+    auto it = renderer.getFontMap().find(fbFontId);
+    if (it != renderer.getFontMap().end()) {
+      EpdFontFamily::setGlobalFallback(&it->second);
+      LOG_DBG("SDFS", "Global fallback set to font ID %d", fbFontId);
+    }
+  }
+}
+
 void SdCardFontSystem::unloadFonts(GfxRenderer& renderer) {
   manager_.unloadAll(renderer);
-  setupUiFontFallback();  // Clear dangling fallback pointers from unloaded fonts
+  // Clear global fallback when SD fonts are unloaded
+  EpdFontFamily::setGlobalFallback(nullptr);
 }
 
 int SdCardFontSystem::resolveFontId(const char* familyName, uint8_t /*fontSizeEnum*/) const {

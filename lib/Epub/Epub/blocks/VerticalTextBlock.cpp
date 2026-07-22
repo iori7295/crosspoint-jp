@@ -6,7 +6,7 @@
 #include <algorithm>
 
 #include "GfxRenderer.h"
-#include "Kinsoku.h"
+#include "../Kinsoku.h"
 
 namespace {
 constexpr int kNoStyle = 0;

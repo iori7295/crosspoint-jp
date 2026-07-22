@@ -10,6 +10,9 @@ class EpdFont {
   ~EpdFont() = default;
   void getTextDimensions(const char* string, int* w, int* h) const;
 
+  /// Returns true if this font has a bitmap for cp (from interval table only).
+  /// Does NOT trigger on-demand loading (glyphMissHandler) or replacement glyph.
+  bool hasGlyph(uint32_t cp) const;
   const EpdGlyph* getGlyph(uint32_t cp) const;
 
   /// Returns the kerning adjustment (4.4 fixed-point in pixels) between two codepoints.

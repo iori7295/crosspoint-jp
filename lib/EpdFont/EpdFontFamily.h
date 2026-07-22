@@ -25,14 +25,30 @@ class EpdFontFamily {
   void getTextDimensions(const char* string, int* w, int* h, Style style = REGULAR) const;
   const EpdFontData* getData(Style style = REGULAR) const;
   const EpdGlyph* getGlyph(uint32_t cp, Style style = REGULAR) const;
+  // Like getGlyph() but never triggers an SD font's on-demand glyphMissHandler:
+  // resolves only flash-resident and already-loaded glyphs. For measurement
+  // (layout/indexing) -- avoids thousands of SD seek+read transactions.
+  const EpdGlyph* getGlyphResident(uint32_t cp, Style style = REGULAR) const;
+  // Returns the font data that actually contains cp (walking the fallback chain).
+  // Used by GfxRenderer::getGlyphBitmap() to pair the glyph pointer with its
+  // owning font's data.
+  const EpdFontData* getDataForGlyph(uint32_t cp, Style style = REGULAR) const;
   int8_t getKerning(uint32_t leftCp, uint32_t rightCp, Style style = REGULAR) const;
   uint32_t applyLigatures(uint32_t cp, const char*& text, Style style = REGULAR) const;
 
+  void setFallback(const EpdFontFamily* fb) { fallbackFamily = fb; }
+  const EpdFontFamily* getFallback() const { return fallbackFamily; }
+
+  static void setGlobalFallback(const EpdFontFamily* fb) { globalFallback_ = fb; }
+  static const EpdFontFamily* getGlobalFallback() { return globalFallback_; }
+
  private:
+  static inline const EpdFontFamily* globalFallback_ = nullptr;
   const EpdFont* regular;
   const EpdFont* bold;
   const EpdFont* italic;
   const EpdFont* boldItalic;
+  const EpdFontFamily* fallbackFamily = nullptr;
 
   const EpdFont* getFont(Style style) const;
 };

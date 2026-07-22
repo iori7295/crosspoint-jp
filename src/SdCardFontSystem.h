@@ -30,6 +30,12 @@ class SdCardFontSystem {
   /// Called by FontDownloadActivity before fetching manifests and font files.
   void unloadFonts(GfxRenderer& renderer);
 
+  /// Set the loaded SD card font as the global fallback in EpdFontFamily.
+  /// After this call, any font family that lacks a glyph will fall through to
+  /// the SD card font's on-demand glyphMissHandler (which can load any glyph
+  /// from the SD card font file).
+  void setGlobalFontFallback(GfxRenderer& renderer) const;
+
   /// Access the registry (e.g. for settings UI to enumerate available fonts).
   const SdCardFontRegistry& registry() const { return registry_; }
 

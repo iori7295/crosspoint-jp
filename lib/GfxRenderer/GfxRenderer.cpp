@@ -50,36 +50,6 @@ const uint8_t* GfxRenderer::getGlyphBitmap(const EpdFontData* fontData, const Ep
     if (sdFont->isOverflowGlyph(glyph)) {
       return sdFont->getOverflowBitmap(glyph);  // may be nullptr for zero-width glyphs
     }
-    // Glyph is not in overflow — check fallback font's overflow (glyph may
-    // have been loaded there via the fallback chain in EpdFont::getGlyph).
-    if (fontData->fallback && fontData->fallback->glyphMissCtx) {
-      auto* fbSdFont = SdCardFont::fromMissCtx(fontData->fallback->glyphMissCtx);
-      if (fbSdFont->isOverflowGlyph(glyph)) {
-        return fbSdFont->getOverflowBitmap(glyph);
-      }
-    }
-  }
-  // Fallback font's overflow (for built-in fonts with SD fallback).
-  if (fontData->fallback && fontData->fallback->glyphMissCtx) {
-    auto* fbSdFont = SdCardFont::fromMissCtx(fontData->fallback->glyphMissCtx);
-    if (fbSdFont->isOverflowGlyph(glyph)) {
-      return fbSdFont->getOverflowBitmap(glyph);
-    }
-  }
-  // Built-in font with SD fallback: the glyph may have come from the fallback's
-  // mini data (heap address). Detect by checking the glyph pointer region.
-  // IMPORTANT: get the CURRENT data from the SD font via glyphMissCtx rather
-  // than using fontData->fallback (a snapshot taken by setupUiFontFallback()
-  // before prewarm). After prewarm, epdFont.data changes from stubData
-  // (bitmap=nullptr) to miniData (bitmap=s.miniBitmap).
-  if (!fontData->glyphMissCtx && fontData->fallback && fontData->fallback->glyphMissCtx) {
-    auto* sdFont = SdCardFont::fromMissCtx(fontData->fallback->glyphMissCtx);
-    const EpdFont* epdFont = sdFont->getEpdFont(0);
-    const uintptr_t addr = reinterpret_cast<uintptr_t>(glyph);
-    if (epdFont && epdFont->data && epdFont->data->bitmap &&
-        (addr < 0x3C000000u || addr >= 0x3D000000u)) {
-      return &epdFont->data->bitmap[glyph->dataOffset];
-    }
   }
   // Normal path: glyph is from the current font's own data (built-in flash or
   // SD mini/regular). dataOffset was rewritten to the local bitmap offset.
@@ -255,7 +225,9 @@ static void renderCharImpl(const GfxRenderer& renderer, GfxRenderer::RenderMode 
     return;
   }
 
-  const EpdFontData* fontData = fontFamily.getData(style);
+  // Use getDataForGlyph to ensure we get the bitmap data from whichever font
+  // in the fallback chain actually owns the glyph (not necessarily the primary).
+  const EpdFontData* fontData = fontFamily.getDataForGlyph(cp, style);
   const bool is2Bit = fontData->is2Bit;
   const uint8_t width = glyph->width;
   const uint8_t height = glyph->height;
