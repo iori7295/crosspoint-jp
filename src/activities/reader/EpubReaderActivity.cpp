@@ -909,12 +909,18 @@ void EpubReaderActivity::render(RenderLock&& lock) {
 
     currentPageFootnotes.clear();
     const int fontId = SETTINGS.getReaderFontId();
+    // Resolve a smaller font for ruby (furigana). Built-in fonts: one size down.
+    // SD card fonts: same family at 8pt (smallest) via sdFontIdResolver.
+    int rubyFontId = fontId;
+    if (fontId == NOTOSERIF_18_FONT_ID) rubyFontId = NOTOSERIF_16_FONT_ID;
+    else if (fontId == NOTOSERIF_16_FONT_ID) rubyFontId = NOTOSERIF_14_FONT_ID;
+    else if (fontId == NOTOSERIF_14_FONT_ID) rubyFontId = NOTOSERIF_12_FONT_ID;
+    else if (fontId == NOTOSANS_18_FONT_ID) rubyFontId = NOTOSANS_16_FONT_ID;
+    else if (fontId == NOTOSANS_16_FONT_ID) rubyFontId = NOTOSANS_14_FONT_ID;
+    else if (fontId == NOTOSANS_14_FONT_ID) rubyFontId = NOTOSANS_12_FONT_ID;
     const auto start = millis();
     VerticalTextBlock block(*vpage);
-    // TODO: resolve a proper ruby fontId (smaller variant of the same family).
-    // The simplified 4-arg overload uses a default ruby font; for correct sizing,
-    // add ruby font resolution in CrossPointSettings or via the SD font registry.
-    block.render(renderer, fontId, fontId, orientedMarginLeft, orientedMarginTop);
+    block.render(renderer, fontId, rubyFontId, orientedMarginLeft, orientedMarginTop);
     renderStatusBar();
     // display refresh is shared below
     LOG_DBG("ERS", "Rendered vertical page in %dms, %zu glyphs, %d columns", millis() - start,
