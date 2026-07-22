@@ -380,3 +380,30 @@ int CrossPointSettings::getReaderFontId() const {
       }
   }
 }
+
+int CrossPointSettings::getRubyFontId() const {
+  // SD card font: same family, smallest size (SMALL = 8pt for CJK fonts).
+  if (sdFontFamilyName[0] != '\0' && sdFontIdResolver) {
+    int id = sdFontIdResolver(sdFontResolverCtx, sdFontFamilyName, SMALL);
+    if (id != 0) return id;
+  }
+
+  // Built-in fonts: one size smaller than the current reader font.
+  switch (fontFamily) {
+    case NOTOSERIF:
+    default:
+      switch (fontSize) {
+        case SMALL:      return NOTOSERIF_12_FONT_ID;
+        case MEDIUM:     return NOTOSERIF_12_FONT_ID;
+        case LARGE:      return NOTOSERIF_14_FONT_ID;
+        case EXTRA_LARGE: return NOTOSERIF_16_FONT_ID;
+      }
+    case NOTOSANS:
+      switch (fontSize) {
+        case SMALL:      return NOTOSANS_12_FONT_ID;
+        case MEDIUM:     return NOTOSANS_12_FONT_ID;
+        case LARGE:      return NOTOSANS_14_FONT_ID;
+        case EXTRA_LARGE: return NOTOSANS_16_FONT_ID;
+      }
+  }
+}

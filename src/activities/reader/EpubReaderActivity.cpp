@@ -895,15 +895,7 @@ void EpubReaderActivity::render(RenderLock&& lock) {
 
     currentPageFootnotes.clear();
     const int fontId = SETTINGS.getReaderFontId();
-    // Resolve a smaller font for ruby (furigana). Built-in fonts: one size down.
-    // SD card fonts: same family at 8pt (smallest) via sdFontIdResolver.
-    int rubyFontId = fontId;
-    if (fontId == NOTOSERIF_18_FONT_ID) rubyFontId = NOTOSERIF_16_FONT_ID;
-    else if (fontId == NOTOSERIF_16_FONT_ID) rubyFontId = NOTOSERIF_14_FONT_ID;
-    else if (fontId == NOTOSERIF_14_FONT_ID) rubyFontId = NOTOSERIF_12_FONT_ID;
-    else if (fontId == NOTOSANS_18_FONT_ID) rubyFontId = NOTOSANS_16_FONT_ID;
-    else if (fontId == NOTOSANS_16_FONT_ID) rubyFontId = NOTOSANS_14_FONT_ID;
-    else if (fontId == NOTOSANS_14_FONT_ID) rubyFontId = NOTOSANS_12_FONT_ID;
+    const int rubyFontId = SETTINGS.getRubyFontId();
     const auto start = millis();
     VerticalTextBlock block(*vpage);
     block.render(renderer, fontId, rubyFontId, orientedMarginLeft, orientedMarginTop);
