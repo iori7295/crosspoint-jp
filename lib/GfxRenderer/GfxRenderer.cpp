@@ -58,14 +58,6 @@ const uint8_t* GfxRenderer::getGlyphBitmap(const EpdFontData* fontData, const Ep
         return fbSdFont->getOverflowBitmap(glyph);
       }
     }
-    // Glyph is not in overflow — check fallback font's overflow (glyph may
-    // have been loaded there via the fallback chain in EpdFont::getGlyph).
-    if (fontData->fallback && fontData->fallback->glyphMissCtx) {
-      auto* fbSdFont = SdCardFont::fromMissCtx(fontData->fallback->glyphMissCtx);
-      if (fbSdFont->isOverflowGlyph(glyph)) {
-        return fbSdFont->getOverflowBitmap(glyph);
-      }
-    }
   }
   // Fallback font's overflow (for built-in fonts with SD fallback).
   if (fontData->fallback && fontData->fallback->glyphMissCtx) {
@@ -74,11 +66,16 @@ const uint8_t* GfxRenderer::getGlyphBitmap(const EpdFontData* fontData, const Ep
       return fbSdFont->getOverflowBitmap(glyph);
     }
   }
-  // Mini/normal bitmap path. For SD fonts in mini state (prewarmed),
-  // fontData->bitmap points to s.miniBitmap and glyph->dataOffset was
-  // rewritten to the mini bitmap offset by prewarmStyle(). For built-in
-  // fonts, fontData->bitmap is the flash-resident bitmap array.
-  if (fontData->bitmap) return &fontData->bitmap[glyph->dataOffset];
+  // Determine which bitmap base to use by checking the glyph pointer origin.
+  // Flash-mapped addresses (0x3c...) = built-in font → use fontData->bitmap.
+  // Heap addresses (0x3f...) = SD font (mini data via fallback) → use fallback->bitmap.
+  const uintptr_t glyphAddr = reinterpret_cast<uintptr_t>(glyph);
+  const bool glyphIsBuiltin = (glyphAddr >= 0x3C000000u && glyphAddr < 0x3D000000u);
+  if (glyphIsBuiltin) {
+    if (fontData->bitmap) return &fontData->bitmap[glyph->dataOffset];
+  } else if (fontData->fallback && fontData->fallback->bitmap) {
+    return &fontData->fallback->bitmap[glyph->dataOffset];
+  }
   return nullptr;
 }
 
