@@ -224,10 +224,7 @@ class GfxRenderer {
   int getTextHeight(int fontId) const;
   bool getGlyphMetrics(int fontId, uint32_t cp, EpdFontFamily::Style style, int* left, int* width, int* top,
                        int* height) const;
-  void drawCharVerticalCornerTopRight(int fontId, int cellLeftX, int cellTopY, int cellSize, uint32_t cp,
-                                      bool black, EpdFontFamily::Style style) const;
-  void drawCharVerticalRotatedInCell(int fontId, int cellLeftX, int cellTopY, int cellSize, uint32_t cp,
-                                     int shiftType, bool black, EpdFontFamily::Style style) const;
+
 
   // Grayscale functions
   void setRenderMode(const RenderMode mode) { this->renderMode = mode; }
