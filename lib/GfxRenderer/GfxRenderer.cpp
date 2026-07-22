@@ -68,10 +68,17 @@ const uint8_t* GfxRenderer::getGlyphBitmap(const EpdFontData* fontData, const Ep
   }
   // Built-in font with SD fallback: the glyph may have come from the fallback's
   // mini data (heap address). Detect by checking the glyph pointer region.
-  if (!fontData->glyphMissCtx && fontData->fallback) {
+  // IMPORTANT: get the CURRENT data from the SD font via glyphMissCtx rather
+  // than using fontData->fallback (a snapshot taken by setupUiFontFallback()
+  // before prewarm). After prewarm, epdFont.data changes from stubData
+  // (bitmap=nullptr) to miniData (bitmap=s.miniBitmap).
+  if (!fontData->glyphMissCtx && fontData->fallback && fontData->fallback->glyphMissCtx) {
+    auto* sdFont = SdCardFont::fromMissCtx(fontData->fallback->glyphMissCtx);
+    const EpdFont* epdFont = sdFont->getEpdFont(0);
     const uintptr_t addr = reinterpret_cast<uintptr_t>(glyph);
-    if (addr < 0x3C000000u || addr >= 0x3D000000u) {
-      if (fontData->fallback->bitmap) return &fontData->fallback->bitmap[glyph->dataOffset];
+    if (epdFont && epdFont->data && epdFont->data->bitmap &&
+        (addr < 0x3C000000u || addr >= 0x3D000000u)) {
+      return &epdFont->data->bitmap[glyph->dataOffset];
     }
   }
   // Normal path: glyph is from the current font's own data (built-in flash or
