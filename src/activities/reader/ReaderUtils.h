@@ -46,21 +46,23 @@ inline PageTurnResult detectPageTurn(const MappedInputManager& input) {
   const bool swapFront = input.isNavDirectionSwapped();
   auto prevButton = swapFront ? MappedInputManager::Button::Right : MappedInputManager::Button::Left;
   auto nextButton = swapFront ? MappedInputManager::Button::Left : MappedInputManager::Button::Right;
-  // RTL vertical mode: swap which physical buttons produce prev vs next.  Left
-  // button → forward (prev=false, next=true) so the loop's `prev ? pageTurn(false)
-  // : pageTurn(true)` correctly moves forward when the user presses left.
+  auto pageBackBtn = MappedInputManager::Button::PageBack;
+  auto pageForwardBtn = MappedInputManager::Button::PageForward;
+  // RTL vertical mode: left button / side-back advance forward so the
+  // physical left-hand button turns the page (Japanese book convention).
   if (SETTINGS.isVerticalMode()) {
     std::swap(prevButton, nextButton);
+    std::swap(pageBackBtn, pageForwardBtn);
   }
   const bool prev =
       tiltPrev ||
-      (usePress ? (input.wasPressed(MappedInputManager::Button::PageBack) || input.wasPressed(prevButton))
-                : (input.wasReleased(MappedInputManager::Button::PageBack) || input.wasReleased(prevButton)));
+      (usePress ? (input.wasPressed(pageBackBtn) || input.wasPressed(prevButton))
+                : (input.wasReleased(pageBackBtn) || input.wasReleased(prevButton)));
   const bool powerTurn = SETTINGS.shortPwrBtn == CrossPointSettings::SHORT_PWRBTN::PAGE_TURN &&
                          input.wasReleased(MappedInputManager::Button::Power);
-  const bool next = tiltNext || (usePress ? (input.wasPressed(MappedInputManager::Button::PageForward) || powerTurn ||
+  const bool next = tiltNext || (usePress ? (input.wasPressed(pageForwardBtn) || powerTurn ||
                                              input.wasPressed(nextButton))
-                                          : (input.wasReleased(MappedInputManager::Button::PageForward) || powerTurn ||
+                                          : (input.wasReleased(pageForwardBtn) || powerTurn ||
                                              input.wasReleased(nextButton)));
   return {prev, next, tiltPrev || tiltNext};
 }
