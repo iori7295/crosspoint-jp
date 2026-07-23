@@ -44,8 +44,14 @@ inline PageTurnResult detectPageTurn(const MappedInputManager& input) {
   const bool tiltNext = SETTINGS.tiltPageTurn && halTiltSensor.wasTiltedForward();
   const bool tiltPrev = SETTINGS.tiltPageTurn && halTiltSensor.wasTiltedBack();
   const bool swapFront = input.isNavDirectionSwapped();
-  const auto prevButton = swapFront ? MappedInputManager::Button::Right : MappedInputManager::Button::Left;
-  const auto nextButton = swapFront ? MappedInputManager::Button::Left : MappedInputManager::Button::Right;
+  auto prevButton = swapFront ? MappedInputManager::Button::Right : MappedInputManager::Button::Left;
+  auto nextButton = swapFront ? MappedInputManager::Button::Left : MappedInputManager::Button::Right;
+  // RTL vertical mode: swap which physical buttons produce prev vs next.  Left
+  // button → forward (prev=false, next=true) so the loop's `prev ? pageTurn(false)
+  // : pageTurn(true)` correctly moves forward when the user presses left.
+  if (SETTINGS.isVerticalMode()) {
+    std::swap(prevButton, nextButton);
+  }
   const bool prev =
       tiltPrev ||
       (usePress ? (input.wasPressed(MappedInputManager::Button::PageBack) || input.wasPressed(prevButton))
