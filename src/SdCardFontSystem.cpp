@@ -102,6 +102,9 @@ void SdCardFontSystem::ensureLoaded(GfxRenderer& renderer) {
     LOG_DBG("SDFS", "SD font family not found: %s (clearing)", wantedFamily);
     SETTINGS.sdFontFamilyName[0] = '\0';
   }
+  // Global fallback pointer must be refreshed: loadFamily() destroyed the old
+  // EpdFontFamily objects and created new ones at different addresses.
+  setGlobalFontFallback(renderer);
 }
 
 void SdCardFontSystem::setGlobalFontFallback(GfxRenderer& renderer) const {
