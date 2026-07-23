@@ -123,6 +123,11 @@ class GfxRenderer {
   void ensureSdCardFontReady(int fontId, const char* utf8Text, uint8_t styleMask = 0x0F) const;
   void ensureSdCardFontReady(int fontId, const std::vector<std::string>& words, bool includeHyphen,
                              uint8_t styleMask = 0x0F) const;
+  // Preload glyph BITMAP data (not just advance metrics) for the given text.
+  // Calls SdCardFont::prewarm(metadataOnly=false) which reads the full glyph
+  // bitmap into miniGlyphs/miniBitmap so on-demand (overflow) loads are avoided
+  // during rendering.  Safe to call on non-SD fonts (no-op).
+  void ensureSdCardFontGlyphsReady(int fontId, const char* utf8Text, uint8_t styleMask = 0x0F) const;
 
   // Orientation control (affects logical width/height and coordinate transforms)
   void setOrientation(const Orientation o) { orientation = o; }

@@ -903,6 +903,24 @@ void EpubReaderActivity::render(RenderLock&& lock) {
     currentPageFootnotes.clear();
     const int fontId = SETTINGS.getReaderFontId();
     const int rubyFontId = SETTINGS.getRubyFontId();
+    // Prewarm glyph bitmaps for this page so on-demand overflow reads are
+    // avoided during rendering.  Collects all glyph + ruby codepoints.
+    if (renderer.isSdCardFont(fontId)) {
+      std::string pageUtf8;
+      pageUtf8.reserve(vpage->glyphs.size() * 4);
+      uint8_t styleMask = 0;
+      for (const auto& g : vpage->glyphs) {
+        styleMask |= (1u << (g.style & 3));
+        char buf[5]; int len = 0;
+        if (g.codepoint < 0x80) { buf[0] = g.codepoint; len = 1; }
+        else if (g.codepoint < 0x800) { buf[0] = 0xC0 | (g.codepoint >> 6); buf[1] = 0x80 | (g.codepoint & 0x3F); len = 2; }
+        else if (g.codepoint < 0x10000) { buf[0] = 0xE0 | (g.codepoint >> 12); buf[1] = 0x80 | ((g.codepoint >> 6) & 0x3F); buf[2] = 0x80 | (g.codepoint & 0x3F); len = 3; }
+        else { buf[0] = 0xF0 | (g.codepoint >> 18); buf[1] = 0x80 | ((g.codepoint >> 12) & 0x3F); buf[2] = 0x80 | ((g.codepoint >> 6) & 0x3F); buf[3] = 0x80 | (g.codepoint & 0x3F); len = 4; }
+        pageUtf8.append(buf, len);
+        if (!g.rubyText.empty()) pageUtf8 += g.rubyText;
+      }
+      renderer.ensureSdCardFontGlyphsReady(fontId, pageUtf8.c_str(), styleMask ? styleMask : 0x01);
+    }
     const auto start = millis();
     VerticalTextBlock block(*vpage);
     block.render(renderer, fontId, rubyFontId, orientedMarginLeft, orientedMarginTop);

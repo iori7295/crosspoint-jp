@@ -81,6 +81,18 @@ void GfxRenderer::ensureSdCardFontReady(int fontId, const std::vector<std::strin
   }
 }
 
+void GfxRenderer::ensureSdCardFontGlyphsReady(int fontId, const char* utf8Text, uint8_t styleMask) const {
+  auto it = sdCardFonts_.find(fontId);
+  if (it != sdCardFonts_.end()) {
+    // Full prewarm: loads advance metrics AND glyph bitmaps into
+    // miniGlyphs/miniBitmap.  metadataOnly=false triggers bitmap I/O.
+    int missed = it->second->prewarm(utf8Text, styleMask, false);
+    if (missed > 0) {
+      LOG_DBG("GFX", "ensureSdCardFontGlyphsReady: %d glyph(s) not found", missed);
+    }
+  }
+}
+
 void GfxRenderer::begin() {
   frameBuffer = display.getFrameBuffer();
   if (!frameBuffer) {

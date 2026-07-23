@@ -596,6 +596,7 @@ struct LayoutPageSink final : ParagraphSink {
   const std::string& imageBasePath;
   const uint16_t viewportWidth;
   const uint16_t viewportHeight;
+  const int fontId;
   size_t imgIdx = 0;
   bool failed = false;
 
@@ -619,7 +620,7 @@ struct LayoutPageSink final : ParagraphSink {
 
   LayoutPageSink(VerticalParsedText& layout, HalFile& out, std::vector<uint32_t>& pageOffsets, Epub& epub,
                  GfxRenderer& renderer, const std::string& chapterDir, const std::string& imageBasePath,
-                 uint16_t viewportWidth, uint16_t viewportHeight)
+                 uint16_t viewportWidth, uint16_t viewportHeight, int fontId)
       : layout(layout),
         out(out),
         pageOffsets(pageOffsets),
@@ -628,7 +629,8 @@ struct LayoutPageSink final : ParagraphSink {
         chapterDir(chapterDir),
         imageBasePath(imageBasePath),
         viewportWidth(viewportWidth),
-        viewportHeight(viewportHeight) {}
+        viewportHeight(viewportHeight),
+        fontId(fontId) {}
 
   void onParagraph(std::vector<RubyRun>& runs, const bool continuesPrevious) override {
     if (failed) return;
@@ -760,8 +762,55 @@ struct LayoutPageSink final : ParagraphSink {
     }
   }
 
+  // Helper: append a single codepoint as UTF-8 to a string.
+  static void appendUtf8(uint32_t cp, std::string& out) {
+    if (cp < 0x80) { out.push_back(static_cast<char>(cp)); }
+    else if (cp < 0x800) {
+      out.push_back(static_cast<char>(0xC0 | (cp >> 6)));
+      out.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
+    } else if (cp < 0x10000) {
+      out.push_back(static_cast<char>(0xE0 | (cp >> 12)));
+      out.push_back(static_cast<char>(0x80 | ((cp >> 6) & 0x3F)));
+      out.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
+    } else {
+      out.push_back(static_cast<char>(0xF0 | (cp >> 18)));
+      out.push_back(static_cast<char>(0x80 | ((cp >> 12) & 0x3F)));
+      out.push_back(static_cast<char>(0x80 | ((cp >> 6) & 0x3F)));
+      out.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
+    }
+  }
+
+  // Preload glyph BITMAP data (not just advance) for every character on this
+  // page, so render-time on-demand (overflow) reads are eliminated.  Call
+  // BEFORE writePage() serialises the page, since that serialization may be
+  // immediately followed by rendering.
+  void ensureGlyphsForPage(const VerticalPage& p, int fontId_) {
+    if (p.isImagePage() || p.glyphs.empty()) return;
+    if (!renderer.isSdCardFont(fontId_)) return;
+    std::string utf8;
+    utf8.reserve(p.glyphs.size() * 3);
+    uint8_t styleMask = 0;
+    for (const auto& g : p.glyphs) {
+      styleMask |= (1u << (g.style & 3));
+      appendUtf8(g.codepoint, utf8);
+      // Ruby text characters also need prewarming
+      for (size_t i = 0; i < g.rubyText.size();) {
+        const auto c0 = static_cast<unsigned char>(g.rubyText[i]);
+        size_t clen = 1;
+        if (c0 >= 0xF0) clen = 4; else if (c0 >= 0xE0) clen = 3; else if (c0 >= 0xC0) clen = 2;
+        if (i + clen > g.rubyText.size()) break;
+        utf8.append(g.rubyText.data() + i, clen);
+        i += clen;
+      }
+    }
+    renderer.ensureSdCardFontGlyphsReady(fontId_, utf8.c_str(), styleMask ? styleMask : 0x01);
+  }
+
   void writeOne(const VerticalPage& p) {
     pageOffsets.push_back(static_cast<uint32_t>(out.position()));
+    // Prewarm glyph bitmaps before serialising, so the subsequent render pass
+    // finds them in miniGlyphs/miniBitmap instead of hitting on-demand overflow.
+    ensureGlyphsForPage(p, fontId);
     if (!writePage(out, p)) {
       LOG_ERR("VSC", "Failed to write page %zu to cache", pageOffsets.size() - 1);
       failed = true;
@@ -912,7 +961,7 @@ bool VerticalSection::streamParseAndLayout(HalFile& out, const int fontId, const
   }
 
   LayoutPageSink sink(layout, out, pageOffsets_, *epub, renderer, chapterDir, imageBasePath, viewportWidth,
-                      viewportHeight);
+                      viewportHeight, fontId);
 
   TextExtractor extractor;
   extractor.sink = &sink;

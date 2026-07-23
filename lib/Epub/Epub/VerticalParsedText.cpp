@@ -473,6 +473,26 @@ std::vector<VerticalPage> VerticalParsedText::layoutPages(void* ctx, PageReadyCa
   // Nothing new to lay out AND nothing left over from a previous non-final call to finalize.
   if (stream_.empty() && !(isFinalFlush && pendingPageValid_)) return pages;
 
+  // Prewarm advance (width) data for this batch's characters so layout
+  // measurement in charAdvancePx and getTextAdvanceX doesn't trigger
+  // on-demand overflow loads for every codepoint.  This is the advance-table
+  // only (not bitmap) -- bitmap prewarm happens at render time.
+  if (renderer_.isSdCardFont(fontId_)) {
+    std::string batch;
+    batch.reserve(stream_.size() * 3);
+    uint8_t mask = 0;
+    for (const auto& pc : stream_) {
+      mask |= (1u << (pc.style & 3));
+      uint32_t cp = pc.codepoint;
+      if (cp < 0x80) batch.push_back(cp);
+      else if (cp < 0x800) { batch.push_back(0xC0 | (cp >> 6)); batch.push_back(0x80 | (cp & 0x3F)); }
+      else if (cp < 0x10000) { batch.push_back(0xE0 | (cp >> 12)); batch.push_back(0x80 | ((cp >> 6) & 0x3F)); batch.push_back(0x80 | (cp & 0x3F)); }
+      else { batch.push_back(0xF0 | (cp >> 18)); batch.push_back(0x80 | ((cp >> 12) & 0x3F)); batch.push_back(0x80 | ((cp >> 6) & 0x3F)); batch.push_back(0x80 | (cp & 0x3F)); }
+      if (!pc.rubyText.empty()) batch += pc.rubyText;
+    }
+    renderer_.ensureSdCardFontReady(fontId_, batch.c_str(), mask ? mask : 0x01);
+  }
+
   const int cellPx = std::max(1, charAdvancePx());
   const int columnAdvancePx = cellPx + columnGapPx_;
   const int ascender = renderer_.getFontAscenderSize(fontId_);
