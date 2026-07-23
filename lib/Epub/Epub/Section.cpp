@@ -120,7 +120,26 @@ bool Section::loadSectionFile(const int fontId, const float lineCompression, con
         hyphenationEnabled != fileHyphenationEnabled || embeddedStyle != fileEmbeddedStyle ||
         imageRendering != fileImageRendering || focusReadingEnabled != fileFocusReadingEnabled) {
       file.close();
-      LOG_ERR("SCT", "Deserialization failed: Parameters do not match");
+      LOG_ERR("SCT", "Cache mismatch, fields:");
+      if (fontId != fileFontId) LOG_ERR("SCT", "  fontId: cached=%d current=%d", fileFontId, fontId);
+      if (lineCompression != fileLineCompression)
+        LOG_ERR("SCT", "  lineCompression: cached=%.2f current=%.2f", fileLineCompression, lineCompression);
+      if (extraParagraphSpacing != fileExtraParagraphSpacing)
+        LOG_ERR("SCT", "  extraParagraphSpacing: cached=%d current=%d", fileExtraParagraphSpacing, extraParagraphSpacing);
+      if (paragraphAlignment != fileParagraphAlignment)
+        LOG_ERR("SCT", "  paragraphAlignment: cached=%d current=%d", fileParagraphAlignment, paragraphAlignment);
+      if (viewportWidth != fileViewportWidth)
+        LOG_ERR("SCT", "  viewportWidth: cached=%d current=%d", fileViewportWidth, viewportWidth);
+      if (viewportHeight != fileViewportHeight)
+        LOG_ERR("SCT", "  viewportHeight: cached=%d current=%d", fileViewportHeight, viewportHeight);
+      if (hyphenationEnabled != fileHyphenationEnabled)
+        LOG_ERR("SCT", "  hyphenationEnabled: cached=%d current=%d", fileHyphenationEnabled, hyphenationEnabled);
+      if (embeddedStyle != fileEmbeddedStyle)
+        LOG_ERR("SCT", "  embeddedStyle: cached=%d current=%d", fileEmbeddedStyle, embeddedStyle);
+      if (imageRendering != fileImageRendering)
+        LOG_ERR("SCT", "  imageRendering: cached=%d current=%d", fileImageRendering, imageRendering);
+      if (focusReadingEnabled != fileFocusReadingEnabled)
+        LOG_ERR("SCT", "  focusReadingEnabled: cached=%d current=%d", fileFocusReadingEnabled, focusReadingEnabled);
       clearCache();
       return false;
     }

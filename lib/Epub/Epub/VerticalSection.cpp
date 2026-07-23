@@ -1074,7 +1074,10 @@ bool VerticalSection::loadSectionFile(const int fontId, const uint16_t viewportW
 
   if (cachedFontId != fontId || cachedWidth != viewportWidth || cachedHeight != viewportHeight) {
     file.close();
-    LOG_DBG("VSC", "Parameter mismatch, clearing cache");
+    LOG_DBG("VSC", "Cache mismatch:");
+    if (cachedFontId != fontId) LOG_DBG("VSC", "  fontId: cached=%d current=%d", cachedFontId, fontId);
+    if (cachedWidth != viewportWidth) LOG_DBG("VSC", "  viewportWidth: cached=%d current=%d", cachedWidth, viewportWidth);
+    if (cachedHeight != viewportHeight) LOG_DBG("VSC", "  viewportHeight: cached=%d current=%d", cachedHeight, viewportHeight);
     clearCache();
     return false;
   }
