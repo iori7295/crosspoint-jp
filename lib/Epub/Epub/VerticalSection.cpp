@@ -852,6 +852,14 @@ bool VerticalSection::streamParseAndLayout(HalFile& out, const int fontId, const
   LOG_INF("VSC", "streamParseAndLayout start spine=%d free=%u maxAlloc=%u", spineIndex, ESP.getFreeHeap(),
           ESP.getMaxAllocHeap());
   const auto localPath = epub->getSpineItem(spineIndex).href;
+  // The zip inflate needs a contiguous 32KB window. If maxAlloc can't provide that,
+  // any attempt would abort in operator new -- skip early so the caller sees a clean
+  // false return and the chapter builds on-demand (where the heap may be healthier).
+  if (ESP.getMaxAllocHeap() < 40000) {
+    LOG_ERR("VSC", "Insufficient heap for chapter build (maxAlloc=%u < 40K), deferring", ESP.getMaxAllocHeap());
+    return false;
+  }
+
   const auto tmpHtmlPath = epub->getCachePath() + "/.tmp_v" + std::to_string(spineIndex) + ".html";
 
   bool success = false;
@@ -1030,17 +1038,12 @@ bool VerticalSection::createSectionFile(const int fontId, const uint16_t viewpor
   }
   serialization::writePod(file, pageCount);
   serialization::writePod(file, indexOffset);
-  // A build that dropped content on low heap produced sparse pages. Keep the file usable for
-  // THIS session (offsets are in RAM, pages read back fine) but stamp version 0 so the next
-  // open hits the version-mismatch path in loadSectionFile and rebuilds the chapter -- with,
-  // ideally, a healthier heap -- instead of the truncation being persisted as a valid cache.
-  if (lastBuildDroppedForHeap_) {
-    LOG_ERR("VSC", "Build dropped glyphs on low heap; marking section stale for rebuild on next open");
-    if (file.seek(0)) {
-      const uint8_t staleVersion = 0;
-      serialization::writePod(file, staleVersion);
-    }
-  }
+  // Previously we stamped version 0 here to force a rebuild next time (so the chapter
+  // could get a healthier heap), but on a consistently constrained device this produces
+  // a permanent rebuild loop: build → drop → stale → rebuild → drop → stale → ...
+  // Keep the cache valid as-is. The partial content (pages before the drop boundary)
+  // is still readable and better than an infinite 6-second rebuild each page turn.
+  (void)lastBuildDroppedForHeap_;
   file.close();
 
   LOG_DBG("VSC", "Cached %u vertical pages (streamed)", pageCount);

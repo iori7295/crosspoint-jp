@@ -955,6 +955,15 @@ void EpubReaderActivity::silentIndexNextChapterIfNeeded(const uint16_t viewportW
     return;
   }
 
+  // Silent indexing needs headroom for the zip inflate window (32KB) plus layout.
+  // If maxAlloc is below the total chapter-build budget, skip -- the chapter will
+  // be built on-demand when the user actually reaches it, which is slower but safe.
+  // Observed abort when starting silent index with maxAlloc=30708.
+  if (ESP.getMaxAllocHeap() < 40000) {
+    LOG_DBG("ERS", "Skipping silent index: maxAlloc=%u < 40K threshold", ESP.getMaxAllocHeap());
+    return;
+  }
+
   const int nextSpineIndex = currentSpineIndex + 1;
   if (nextSpineIndex < 0 || nextSpineIndex >= epub->getSpineItemsCount()) {
     return;
