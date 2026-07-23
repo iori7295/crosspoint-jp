@@ -3,6 +3,7 @@
 #include <Bitmap.h>
 #include <Epub.h>
 #include <FsHelpers.h>
+#include <FontCacheManager.h>
 #include <GfxRenderer.h>
 #include <HalStorage.h>
 #include <I18n.h>
@@ -115,6 +116,18 @@ void HomeActivity::onEnter() {
 
   const auto& metrics = UITheme::getInstance().getMetrics();
   loadRecentBooks(metrics.homeRecentBooksCount);
+
+  // Prewarm SD card font with recent book titles so CJK glyphs load
+  // before the rendering pass measures/draws them, avoiding one-by-one
+  // SD reads at render time.  No-op when no SD font is installed.
+  if (auto* fcm = renderer.getFontCacheManager()) {
+    int fontId = SETTINGS.getReaderFontId();
+    for (const auto& book : recentBooks) {
+      if (!book.title.empty()) {
+        fcm->prewarmCache(fontId, book.title.c_str(), 0x01);
+      }
+    }
+  }
 
   const auto base = static_cast<int>(recentBooks.size());
   selectorIndex = initialMenuItem == HomeMenuItem::NONE ? 0 : base + menuItemToIndex(initialMenuItem, hasOpdsServers);
