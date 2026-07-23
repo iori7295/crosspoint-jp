@@ -222,7 +222,23 @@ void VerticalTextBlock::render(GfxRenderer& renderer, int fontId, int rubyFontId
       std::memcpy(buf, g.rubyText.data() + ri, charLen);
       buf[charLen] = '\0';
 
-      renderer.drawText(rubyFontId, rubyX, rubyY, buf, black, rubyStyle);
+      // Decode codepoint to check if this ruby character needs 90° CCW rotation
+      // in vertical mode (chōonpu ー, dashes —, etc.).  These characters are
+      // stored upright in the font; rotating them makes them read correctly in
+      // a tategaki ruby strip.
+      uint32_t rubyCp = c0;
+      if (charLen == 2) rubyCp = ((c0 & 0x1F) << 6) | (static_cast<unsigned char>(g.rubyText[ri + 1]) & 0x3F);
+      else if (charLen == 3) rubyCp = ((c0 & 0x0F) << 12) | ((static_cast<unsigned char>(g.rubyText[ri + 1]) & 0x3F) << 6) | (static_cast<unsigned char>(g.rubyText[ri + 2]) & 0x3F);
+      else if (charLen == 4) rubyCp = ((c0 & 0x07) << 18) | ((static_cast<unsigned char>(g.rubyText[ri + 1]) & 0x3F) << 12) | ((static_cast<unsigned char>(g.rubyText[ri + 2]) & 0x3F) << 6) | (static_cast<unsigned char>(g.rubyText[ri + 3]) & 0x3F);
+
+      // Characters that should rotate: chōonpu, dashes, horizontal rules
+      const bool needRotate = (rubyCp == 0x30FC || rubyCp == 0x2014 || rubyCp == 0x2015 || rubyCp == 0xFF5E ||
+                               rubyCp == 0x301C || rubyCp == 0xFF70);
+      if (needRotate) {
+        renderer.drawTextRotated90CCW(rubyFontId, rubyX + cellPxLocal / 4, rubyY + rubyLineH / 2, buf, black, rubyStyle);
+      } else {
+        renderer.drawText(rubyFontId, rubyX, rubyY, buf, black, rubyStyle);
+      }
       rubyY += rubyLineH;
       ri += charLen;
     }

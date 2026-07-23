@@ -26,7 +26,12 @@ namespace {
 // only cushion for OTHER allocations during the build, and while a chapter build runs the rest of
 // the app is quiescent (largest concurrent needs: SD write buffers and log lines, low KBs). 8KB
 // matches SMALL_ALLOC_MARGIN, the equivalent cushion used for per-push growth in this file.
-constexpr uint32_t MIN_FREE_HEAP_FOR_RESERVE = 8 * 1024;
+// X3 has ~220KB usable heap vs matcha's ~380KB ESP32-C3 dev board.  The 8KB
+// margin was tuned for the larger heap; on the X3 this caused page glyph
+// reserve (21KB) + 8KB = 29KB to be refused with only 28KB maxAlloc,
+// falling back to incremental growth that fragmented the heap further.
+// 2KB leaves just enough cushion for concurrent SD writes and log lines.
+constexpr uint32_t MIN_FREE_HEAP_FOR_RESERVE = 2 * 1024;
 }  // namespace
 
 namespace {
@@ -552,7 +557,7 @@ std::vector<VerticalPage> VerticalParsedText::layoutPages(void* ctx, PageReadyCa
       glyphs.push_back(g);
       return true;
     }
-    constexpr uint32_t SMALL_ALLOC_MARGIN = 8 * 1024;  // headroom for the rest of the app, not the reserve() margin
+    constexpr uint32_t SMALL_ALLOC_MARGIN = 2 * 1024;  // headroom for the rest of the app, not the reserve() margin
     constexpr size_t LINEAR_GROWTH_STEP = 16;  // elements; keeps a stalled page's retries cheap
 
     const size_t doubledCapacity = glyphs.capacity() == 0 ? 1 : glyphs.capacity() * 2;
