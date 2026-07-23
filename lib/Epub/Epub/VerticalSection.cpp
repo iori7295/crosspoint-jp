@@ -35,7 +35,7 @@ constexpr uint8_t VSECTION_FILE_VERSION = 57;  // v57: rotated Latin runs start 
 // 4KB, not 1KB: chapter builds are SD-latency-bound -- the inflate staging write, the
 // staging read-back, and the expat feed each touch the card once per chunk, so quadrupling
 // the chunk quarters the transaction count for ~12KB of transient buffers.
-constexpr size_t PARSE_BUFFER_SIZE = 4096;
+constexpr size_t PARSE_BUFFER_SIZE = 2048;
 
 using RubyRun = VerticalParsedText::RubyRun;
 

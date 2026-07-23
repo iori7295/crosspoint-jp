@@ -361,8 +361,10 @@ void GfxRenderer::drawPixel(const int x, const int y, const bool state) const {
   rotateCoordinates(orientation, x, y, &phyX, &phyY, panelWidth, panelHeight);
 
   // Bounds checking against runtime panel dimensions
+  // Off-screen pixels are normal for glyphs near the edge (negative bearing).
+  // Demoted to DBG to avoid log spam on every home screen render.
   if (phyX < 0 || phyX >= panelWidth || phyY < 0 || phyY >= panelHeight) {
-    LOG_ERR("GFX", "!! Outside range (%d, %d) -> (%d, %d)", x, y, phyX, phyY);
+    LOG_DBG("GFX", "Outside range (%d, %d) -> (%d, %d)", x, y, phyX, phyY);
     return;
   }
 

@@ -155,6 +155,13 @@ void EpubReaderActivity::onEnter() {
     return;
   }
 
+  // Free cached glyphs and decompressor buffers before starting a chapter build.
+  // The Home screen's prewarm cache and cover buffer consume heap that the
+  // vertical layout engine needs for its stream/page/reserve allocations.
+  if (auto* fcm = renderer.getFontCacheManager()) {
+    fcm->clearCache();
+  }
+
   // Configure screen orientation based on settings
   // NOTE: This affects layout math and must be applied before any render calls.
   ReaderUtils::applyOrientation(renderer, SETTINGS.orientation);
@@ -1473,6 +1480,8 @@ bool EpubReaderActivity::loadSectionForCurrentMode(uint16_t viewportWidth, uint1
     setPage(section->currentPage, section->pageCount);
   }
 
+  LOG_DBG("ERS", "Heap: maxAlloc=%u free=%u pages=%d",
+          ESP.getMaxAllocHeap(), ESP.getFreeHeap(), getCurrentPageCount());
   return true;
 }
 
