@@ -1,6 +1,7 @@
 #include "RecentBooksActivity.h"
 
 #include <GfxRenderer.h>
+#include "activities/reader/ReaderUtils.h"
 #include <HalStorage.h>
 #include <I18n.h>
 
@@ -22,6 +23,7 @@ void RecentBooksActivity::loadRecentBooks() { recentBooks = RECENT_BOOKS.getBook
 
 void RecentBooksActivity::onEnter() {
   Activity::onEnter();
+  ReaderUtils::applyOrientation(renderer, SETTINGS.orientation);
 
   // Prune entries whose backing files are gone; this is one of two interaction
   // points where the persistent store gets cleaned (the other is addBook).
@@ -137,6 +139,19 @@ void RecentBooksActivity::render(RenderLock&&) {
   if (recentBooks.empty()) {
     renderer.drawText(UI_10_FONT_ID, metrics.contentSidePadding, contentTop + 20, tr(STR_NO_RECENT_BOOKS));
   } else {
+    // Prewarm glyphs for visible book titles (drawList uses UI_10_FONT_ID for title, SMALL_FONT_ID for subtitle).
+    {
+      const int pageItems = UITheme::getInstance().getNumberOfItemsPerPage(renderer, true, false, true, true);
+      const int firstVisible = (selectorIndex / pageItems) * pageItems;
+      std::string buf;
+      buf.reserve(384);
+      for (int i = firstVisible; i < firstVisible + pageItems && i < (int)recentBooks.size(); ++i) {
+        buf += recentBooks[i].title;
+        buf += recentBooks[i].author;
+      }
+      if (!buf.empty())
+        renderer.ensureSdCardFontGlyphsReady(UI_10_FONT_ID, buf.c_str(), 0x01);
+    }
     GUI.drawList(
         renderer, Rect{0, contentTop, pageWidth, contentHeight}, recentBooks.size(), selectorIndex,
         [this](int index) { return recentBooks[index].title; }, [this](int index) { return recentBooks[index].author; },

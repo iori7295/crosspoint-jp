@@ -8,6 +8,7 @@
 
 #include <algorithm>
 
+#include "activities/reader/ReaderUtils.h"
 #include "CrossPointSettings.h"
 #include "MappedInputManager.h"
 #include "activities/util/ConfirmationActivity.h"
@@ -65,6 +66,7 @@ void FileBrowserActivity::loadFiles() {
 
 void FileBrowserActivity::onEnter() {
   Activity::onEnter();
+  ReaderUtils::applyOrientation(renderer, SETTINGS.orientation);
 
   fileNameBuffer = makeUniqueNoThrow<char[]>(NAME_BUFFER_SIZE);
   if (!fileNameBuffer) {
@@ -366,6 +368,17 @@ void FileBrowserActivity::render(RenderLock&&) {
     const char* emptyMsg = (mode == Mode::PickFirmware) ? tr(STR_NO_BIN_FILES) : tr(STR_NO_FILES_FOUND);
     renderer.drawText(UI_10_FONT_ID, metrics.contentSidePadding, contentTop + 20, emptyMsg);
   } else {
+    // Prewarm glyphs for visible file names (drawList uses UI_10_FONT_ID).
+    {
+      const int pageItems = UITheme::getNumberOfItemsPerPage(renderer, true, false, true, false, pathReserved);
+      const int firstVisible = (selectorIndex / pageItems) * pageItems;
+      std::string buf;
+      buf.reserve(384);
+      for (int i = firstVisible; i < firstVisible + pageItems && i < (int)files.size(); ++i)
+        buf += getFileName(files[i]);
+      if (!buf.empty())
+        renderer.ensureSdCardFontGlyphsReady(UI_10_FONT_ID, buf.c_str(), 0x01);
+    }
     GUI.drawList(
         renderer, Rect{0, contentTop, pageWidth, contentHeight}, files.size(), selectorIndex,
         [this](int index) { return getFileName(files[index]); }, nullptr,
@@ -379,6 +392,8 @@ void FileBrowserActivity::render(RenderLock&&) {
     const int separatorY = pathY - metrics.verticalSpacing / 2;
     renderer.drawLine(0, separatorY, pageWidth - 1, separatorY, 3, true);
     const int pathMaxWidth = pageWidth - metrics.contentSidePadding * 2;
+    // Prewarm path text so the getTextWidth loop below doesn't hit overflow.
+    renderer.ensureSdCardFontGlyphsReady(SMALL_FONT_ID, basepath.c_str(), 0x01);
     // Left-truncate so the deepest directory is always visible
     const char* pathStr = basepath.c_str();
     const char* pathDisplay = pathStr;
