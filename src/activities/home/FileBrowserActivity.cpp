@@ -8,6 +8,7 @@
 
 #include <algorithm>
 
+#include "activities/reader/ReaderUtils.h"
 #include "CrossPointSettings.h"
 #include "MappedInputManager.h"
 #include "activities/util/ConfirmationActivity.h"
@@ -65,6 +66,7 @@ void FileBrowserActivity::loadFiles() {
 
 void FileBrowserActivity::onEnter() {
   Activity::onEnter();
+  ReaderUtils::applyOrientation(renderer, SETTINGS.orientation);
 
   fileNameBuffer = makeUniqueNoThrow<char[]>(NAME_BUFFER_SIZE);
   if (!fileNameBuffer) {

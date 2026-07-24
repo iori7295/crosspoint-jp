@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <memory>
 
+#include "activities/reader/ReaderUtils.h"
 #include "MappedInputManager.h"
 #include "RecentBooksStore.h"
 #include "activities/util/ConfirmationActivity.h"
@@ -22,6 +23,7 @@ void RecentBooksActivity::loadRecentBooks() { recentBooks = RECENT_BOOKS.getBook
 
 void RecentBooksActivity::onEnter() {
   Activity::onEnter();
+  ReaderUtils::applyOrientation(renderer, SETTINGS.orientation);
 
   // Prune entries whose backing files are gone; this is one of two interaction
   // points where the persistent store gets cleaned (the other is addBook).
