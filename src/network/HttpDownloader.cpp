@@ -1,8 +1,10 @@
 #include "HttpDownloader.h"
 
 #include <Arduino.h>
+#include <HTTPClient.h>
 #include <Logging.h>
 #include <Memory.h>
+#include <NetworkClientSecure.h>
 #include <base64.h>
 
 #include <functional>
@@ -43,6 +45,76 @@ struct Sink {
 
 bool isRedirect(int status) {
   return status == 301 || status == 302 || status == 303 || status == 307 || status == 308;
+}
+
+// Arduino HTTPClient + NetworkClientSecure::setInsecure() for TLS without
+// certificate verification (matching zrn-ns behaviour).  The ESP-IDF native
+// esp_http_client path cannot disable cert verification without recompiling
+// the entire ESP-IDF with CONFIG_ESP_TLS_INSECURE.
+HttpDownloader::DownloadError runGetInsecure(const std::string& url, const std::string& username,
+                                             const std::string& password, Sink& sink) {
+  class SinkStream final : public Stream {
+   public:
+    explicit SinkStream(Sink& sink) : sink_(sink) {}
+    size_t write(uint8_t b) override { return write(&b, 1); }
+    size_t write(const uint8_t* data, size_t len) override {
+      if (!sink_.write(data, len)) { ok_ = false; return 0; }
+      sink_.downloaded += len;
+      if (sink_.progress) sink_.progress(sink_.downloaded, sink_.total);
+      return len;
+    }
+    int available() override { return 0; }
+    int read() override { return -1; }
+    int peek() override { return -1; }
+    void flush() override {}
+    bool ok() const { return ok_; }
+   private:
+    Sink& sink_;
+    bool ok_ = true;
+  };
+
+  NetworkClientSecure* secure = new NetworkClientSecure();
+  secure->setInsecure();
+  secure->setHandshakeTimeout(20);
+
+  HTTPClient http;
+  http.begin(*secure, url.c_str());
+  http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+  http.addHeader("User-Agent", "CrossPoint-ESP32-" CROSSPOINT_VERSION);
+
+  if (!username.empty() && !password.empty()) {
+    const std::string credentials = username + ":" + password;
+    const String encoded = base64::encode(credentials.c_str());
+    http.addHeader("Authorization", "Basic " + encoded);
+  }
+
+  LOG_DBG("HTTP", "Insecure GET: %s", url.c_str());
+  const int httpCode = http.GET();
+
+  if (httpCode <= 0) {
+    LOG_ERR("HTTP", "insecure GET failed: %d", httpCode);
+    http.end();
+    delete secure;
+    return HttpDownloader::HTTP_ERROR;
+  }
+  if (httpCode != HTTP_CODE_OK) {
+    LOG_ERR("HTTP", "unexpected status: %d", httpCode);
+    http.end();
+    delete secure;
+    return HttpDownloader::HTTP_ERROR;
+  }
+
+  SinkStream stream(sink);
+  http.writeToStream(&stream);
+  if (!stream.ok()) {
+    http.end();
+    delete secure;
+    return HttpDownloader::FILE_ERROR;
+  }
+
+  http.end();
+  delete secure;
+  return HttpDownloader::OK;
 }
 
 #if defined(FREEINK_NET_WOLFSSL)
@@ -292,5 +364,41 @@ HttpDownloader::DownloadError HttpDownloader::downloadToFile(const std::string& 
     return HTTP_ERROR;
   }
   LOG_DBG("HTTP", "Downloaded %zu bytes", sink.downloaded);
+  return OK;
+}
+
+HttpDownloader::DownloadError HttpDownloader::downloadToFileInsecure(const std::string& url, const std::string& destPath,
+                                                                     ProgressCallback progress, bool* cancelFlag,
+                                                                     const std::string& username,
+                                                                     const std::string& password) {
+  LOG_DBG("HTTP", "Downloading (insecure): %s -> %s", url.c_str(), destPath.c_str());
+
+  if (Storage.exists(destPath.c_str())) {
+    Storage.remove(destPath.c_str());
+  }
+  HalFile file;
+  if (!Storage.openFileForWrite("HTTP", destPath.c_str(), file)) {
+    LOG_ERR("HTTP", "Failed to open file for writing");
+    return FILE_ERROR;
+  }
+
+  Sink sink;
+  sink.progress = std::move(progress);
+  sink.cancelFlag = cancelFlag;
+  sink.write = [&file](const uint8_t* data, size_t len) { return file.write(data, len) == len; };
+
+  const DownloadError result = runGetInsecure(url, username, password, sink);
+  file.close();
+
+  if (result != OK) {
+    Storage.remove(destPath.c_str());
+    return result;
+  }
+  if (sink.downloaded == 0) {
+    LOG_ERR("HTTP", "no data received");
+    Storage.remove(destPath.c_str());
+    return HTTP_ERROR;
+  }
+  LOG_DBG("HTTP", "Downloaded %zu bytes (insecure)", sink.downloaded);
   return OK;
 }
