@@ -39,7 +39,7 @@ struct PageTurnResult {
   bool fromTilt;
 };
 
-inline PageTurnResult detectPageTurn(const MappedInputManager& input) {
+inline PageTurnResult detectPageTurn(const MappedInputManager& input, bool verticalActive = false) {
   const bool usePress = SETTINGS.longPressButtonBehavior == SETTINGS.OFF;
   const bool tiltNext = SETTINGS.tiltPageTurn && halTiltSensor.wasTiltedForward();
   const bool tiltPrev = SETTINGS.tiltPageTurn && halTiltSensor.wasTiltedBack();
@@ -50,7 +50,7 @@ inline PageTurnResult detectPageTurn(const MappedInputManager& input) {
   auto pageForwardBtn = MappedInputManager::Button::PageForward;
   // RTL vertical mode: left button / side-back advance forward so the
   // physical left-hand button turns the page (Japanese book convention).
-  if (SETTINGS.isVerticalMode()) {
+  if (verticalActive) {
     std::swap(prevButton, nextButton);
     std::swap(pageBackBtn, pageForwardBtn);
   }
