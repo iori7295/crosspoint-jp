@@ -102,12 +102,12 @@ void drawGlyphs(GfxRenderer& renderer, const VerticalPage& page, int fontId, int
           nudgeX = cellPx / 12;
           nudgeY = cellPx / 8;
         }
-        // Rotated 90° CCW: baseline at (cursorX, cursorY) places ink at
-        //   screenX = cursorX + top - glyphY  → visual center at cursorX + top - height/2
-        //   screenY = cursorY + left + glyphX  → visual center at cursorY + left + width/2
-        // Align ink visual center with the cell center rather than the baseline.
+        // Rotated 90° CCW: screenX = cursorX + top - glyphY → ink visual
+        // centre at cursorX + top - height/2.  Align that with the cell
+        // centre (dx + cellPx/2).  Y uses the baseline-relative position
+        // (same as upright text) to avoid overlap with the row above.
         const int rCursorX = dx + cellPx / 2 + gh / 2 - gt + nudgeX;
-        const int rCursorY = rotatedDy + cellPx / 2 - gl - (gw / 2) + nudgeY;
+        const int rCursorY = rotatedDy + cellPx / 2 + gh / 2 + nudgeY;
         std::string utf8Buf;
         encodeCodepoint(g.codepoint, utf8Buf);
         renderer.drawTextRotated90CCW(fontId, rCursorX, rCursorY, utf8Buf.c_str(), black, style);
