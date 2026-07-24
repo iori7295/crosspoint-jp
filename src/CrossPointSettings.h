@@ -269,6 +269,17 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   uint8_t language = 0;
   // Quick Resume: keep current content visible with moon icon instead of showing a static sleep screen.
   uint8_t quickResumeSleepScreen = QUICK_RESUME_NEVER;
+  // Vertical text mode preference. Persisted via JSON as uint8_t.
+  // 0 = auto (follow EPUB language), 1 = force on, 2 = force off.
+  enum VerticalTextModePref : uint8_t { VM_AUTO = 0, VM_ON = 1, VM_OFF = 2, VM_COUNT };
+  uint8_t verticalTextMode = VM_AUTO;
+
+  // Returns true when the reader should use vertical layout for the current book.
+  bool isVerticalMode(bool isJapaneseBook = false) const {
+    if (verticalTextMode == VM_ON) return true;
+    if (verticalTextMode == VM_OFF) return false;
+    return isJapaneseBook;  // VM_AUTO
+  }
 
   static constexpr uint8_t MIN_SLEEP_TIMEOUT_MINUTES = 1;
   static constexpr uint8_t SLEEP_TIMEOUT_NEVER_MINUTES = 31;
@@ -284,6 +295,7 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     return (shortPwrBtn == CrossPointSettings::SHORT_PWRBTN::SLEEP) ? 10 : 400;
   }
   int getReaderFontId() const;
+  int getRubyFontId() const;
 
   // Resolved status-bar composition. Consumers read the spec; only settings
   // editors read the raw fields.
