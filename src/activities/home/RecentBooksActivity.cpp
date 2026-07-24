@@ -1,5 +1,6 @@
 #include "RecentBooksActivity.h"
 
+#include <FontCacheManager.h>
 #include <GfxRenderer.h>
 #include <HalStorage.h>
 #include <I18n.h>
@@ -151,6 +152,27 @@ void RecentBooksActivity::promptRemoveBook(const std::string& path, const std::s
 }
 
 void RecentBooksActivity::render(RenderLock&&) {
+  // Prewarm CJK glyphs for visible book titles so drawList doesn't pay
+  // one-by-one SD reads during the rendering pass.
+  if (auto* fcm = renderer.getFontCacheManager()) {
+    int fontId = SETTINGS.getReaderFontId();
+    constexpr uint8_t kStyleMask = 0x03;
+    std::vector<std::string> titles;
+    titles.reserve(recentBooks.size());
+    std::string joined;
+    for (const auto& book : recentBooks) {
+      if (!book.title.empty()) {
+        titles.push_back(book.title);
+        joined += book.title;
+        joined += '\n';
+      }
+    }
+    if (!titles.empty()) {
+      renderer.ensureSdCardFontReady(fontId, titles, false, kStyleMask);
+      fcm->prewarmCache(fontId, joined.c_str(), kStyleMask);
+    }
+  }
+
   renderer.clearScreen();
 
   const auto pageWidth = renderer.getScreenWidth();
