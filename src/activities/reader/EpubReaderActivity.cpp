@@ -1118,7 +1118,7 @@ void EpubReaderActivity::render(RenderLock&& lock) {
         if (!verticalSection_->createSectionFile(SETTINGS.getReaderFontId(), viewportWidth, viewportHeight)) {
           LOG_ERR("ERS", "Failed to persist vertical page data to SD");
           verticalSection_.reset();
-          showPendingSyncSaveError();
+          showBuildError();
           return;
         }
       } else {
@@ -1290,7 +1290,7 @@ void EpubReaderActivity::render(RenderLock&& lock) {
       verticalSection_.reset();
       requestUpdate();
       automaticPageTurnActive = false;
-      showPendingSyncSaveError();
+      showBuildError();
       return;
     }
 

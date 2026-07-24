@@ -20,6 +20,10 @@ class HalFile;
 //     batch of laid-out pages is serialized to the cache file immediately and freed.
 //   - loadSectionFile() reads only the header + a per-page offset table (4 bytes/page).
 //   - getPage() loads the one requested page from SD on demand into a single-page cache.
+//
+// Build lifecycle (1.5-compatible stubs): createSectionFile() is synchronous, so
+// isBuilding() is only true inside that call and isBuildComplete() means no build
+// is running.  Future work can add true incremental build via startBuild/buildSomeMore.
 class VerticalSection {
   std::shared_ptr<Epub> epub;
   const int spineIndex;
@@ -39,10 +43,12 @@ class VerticalSection {
   bool streamParseAndLayout(HalFile& out, int fontId, uint16_t viewportWidth, uint16_t viewportHeight);
 
   // Set by streamParseAndLayout when the layout dropped chars/glyphs on low heap. The pages that
-  // made it to disk are readable (this session keeps working), but createSectionFile stamps the
-  // file with version 0 so the next open sees a version mismatch and rebuilds the chapter --
-  // instead of the truncation living on disk as a permanently sparse chapter.
+  // made it to disk are readable (this session keeps working).
   bool lastBuildDroppedForHeap_ = false;
+
+  // True while createSectionFile() is actively building. Used by EpubReaderActivity::loop()
+  // to gate background work (idle prewarm, partial rebuild).
+  bool buildInProgress_ = false;
 
  public:
   uint16_t pageCount = 0;
@@ -59,4 +65,16 @@ class VerticalSection {
   bool clearCache() const;
   const VerticalPage* getPage() const;
   const VerticalPage* getPage(int pageIndex) const;
+
+  // Build lifecycle stubs (1.5-compatible).
+  bool isBuilding() const { return buildInProgress_; }
+  bool isBuildComplete() const { return !buildInProgress_; }
+  // VerticalSection always builds atomically; no partial/suspend support yet.
+  bool isPartial() const { return false; }
+  void suspendBuild() {}
+  void abandonBuild() {}
+  // Best estimate equals pageCount (synchronous build means we already know).
+  uint16_t estimatedTotalPages() const { return pageCount; }
+  // No-op: createSectionFile builds atomically.
+  bool canSkipBuild() const { return false; }
 };

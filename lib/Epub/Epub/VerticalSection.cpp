@@ -3,6 +3,7 @@
 
 #include <Arduino.h>
 #include <FontCacheManager.h>
+#include <GfxRenderer.h>
 #include <HalStorage.h>
 #include <Logging.h>
 #include <Serialization.h>
@@ -1041,6 +1042,12 @@ bool VerticalSection::streamParseAndLayout(HalFile& out, const int fontId, const
 
 bool VerticalSection::createSectionFile(const int fontId, const uint16_t viewportWidth,
                                          const uint16_t viewportHeight) {
+  buildInProgress_ = true;
+  // Lend the 48 KB framebuffer to heap during the build (same pattern as
+  // Section::createSectionFile / startBuild in the 1.5 reader).  The display
+  // keeps showing the last image; restoreFrameBufferAfterBuild() repaints white.
+  GfxRenderer::FrameBufferLoan loan(renderer);
+
   const auto vsectionsDir = epub->getCachePath() + "/vsections";
   Storage.mkdir(vsectionsDir.c_str());
 
@@ -1050,6 +1057,8 @@ bool VerticalSection::createSectionFile(const int fontId, const uint16_t viewpor
 
   HalFile file;
   if (!Storage.openFileForWrite("VSC", filePath, file)) {
+    buildInProgress_ = false;
+    loan.end();
     return false;
   }
 
@@ -1069,6 +1078,8 @@ bool VerticalSection::createSectionFile(const int fontId, const uint16_t viewpor
     file.close();
     Storage.remove(filePath.c_str());
     pageOffsets_.clear();
+    buildInProgress_ = false;
+    loan.end();
     return false;
   }
 
@@ -1083,17 +1094,16 @@ bool VerticalSection::createSectionFile(const int fontId, const uint16_t viewpor
     Storage.remove(filePath.c_str());
     pageOffsets_.clear();
     pageCount = 0;
+    buildInProgress_ = false;
+    loan.end();
     return false;
   }
   serialization::writePod(file, pageCount);
   serialization::writePod(file, indexOffset);
-  // Previously we stamped version 0 here to force a rebuild next time (so the chapter
-  // could get a healthier heap), but on a consistently constrained device this produces
-  // a permanent rebuild loop: build → drop → stale → rebuild → drop → stale → ...
-  // Keep the cache valid as-is. The partial content (pages before the drop boundary)
-  // is still readable and better than an infinite 6-second rebuild each page turn.
   (void)lastBuildDroppedForHeap_;
   file.close();
+  loan.end();
+  buildInProgress_ = false;
 
   LOG_DBG("VSC", "Cached %u vertical pages (streamed)", pageCount);
   return true;
