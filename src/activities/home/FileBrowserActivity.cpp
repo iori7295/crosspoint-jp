@@ -368,7 +368,9 @@ void FileBrowserActivity::render(RenderLock&&) {
     const char* emptyMsg = (mode == Mode::PickFirmware) ? tr(STR_NO_BIN_FILES) : tr(STR_NO_FILES_FOUND);
     renderer.drawText(UI_10_FONT_ID, metrics.contentSidePadding, contentTop + 20, emptyMsg);
   } else {
-    // Prewarm glyphs for visible file names (drawList uses UI_10_FONT_ID).
+    // Prewarm glyphs for visible file names.  UI_10_FONT_ID is a built-in
+    // Latin font: CJK glyphs go through global fallback to the SD card font.
+    // Prewarm must target that SD font (not UI_10_FONT_ID) to be effective.
     {
       const int pageItems = UITheme::getNumberOfItemsPerPage(renderer, true, false, true, false, pathReserved);
       const int firstVisible = (selectorIndex / pageItems) * pageItems;
@@ -376,8 +378,13 @@ void FileBrowserActivity::render(RenderLock&&) {
       buf.reserve(384);
       for (int i = firstVisible; i < firstVisible + pageItems && i < (int)files.size(); ++i)
         buf += getFileName(files[i]);
-      if (!buf.empty())
-        renderer.ensureSdCardFontGlyphsReady(UI_10_FONT_ID, buf.c_str(), 0x01);
+      if (!buf.empty()) {
+        int fbFontId = renderer.getFallbackFontId();
+        if (fbFontId != 0) {
+          renderer.ensureSdCardFontReady(fbFontId, buf.c_str(), 0x01);
+          renderer.ensureSdCardFontGlyphsReady(fbFontId, buf.c_str(), 0x01);
+        }
+      }
     }
     GUI.drawList(
         renderer, Rect{0, contentTop, pageWidth, contentHeight}, files.size(), selectorIndex,
@@ -393,7 +400,14 @@ void FileBrowserActivity::render(RenderLock&&) {
     renderer.drawLine(0, separatorY, pageWidth - 1, separatorY, 3, true);
     const int pathMaxWidth = pageWidth - metrics.contentSidePadding * 2;
     // Prewarm path text so the getTextWidth loop below doesn't hit overflow.
-    renderer.ensureSdCardFontGlyphsReady(SMALL_FONT_ID, basepath.c_str(), 0x01);
+    // SMALL_FONT_ID is built-in; CJK falls through to global fallback.
+    {
+      int fbFontId = renderer.getFallbackFontId();
+      if (fbFontId != 0) {
+        renderer.ensureSdCardFontReady(fbFontId, basepath.c_str(), 0x01);
+        renderer.ensureSdCardFontGlyphsReady(fbFontId, basepath.c_str(), 0x01);
+      }
+    }
     // Left-truncate so the deepest directory is always visible
     const char* pathStr = basepath.c_str();
     const char* pathDisplay = pathStr;

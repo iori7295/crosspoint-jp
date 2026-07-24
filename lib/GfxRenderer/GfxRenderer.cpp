@@ -1,6 +1,7 @@
 #include "GfxRenderer.h"
 
 #include <BidiUtils.h>
+#include <EpdFontFamily.h>
 #include <FontDecompressor.h>
 #include <HalGPIO.h>
 #include <Logging.h>
@@ -2005,4 +2006,12 @@ void GfxRenderer::drawTextRotated90CCW(const int fontId, const int x, const int 
   }
 }
 
+int GfxRenderer::getFallbackFontId() const {
+  const auto* fb = EpdFontFamily::getGlobalFallback();
+  if (!fb) return 0;
+  for (const auto& [id, family] : fontMap) {
+    if (&family == fb) return id;
+  }
+  return 0;
+}
 

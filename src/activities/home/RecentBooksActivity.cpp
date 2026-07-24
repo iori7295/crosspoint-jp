@@ -139,7 +139,8 @@ void RecentBooksActivity::render(RenderLock&&) {
   if (recentBooks.empty()) {
     renderer.drawText(UI_10_FONT_ID, metrics.contentSidePadding, contentTop + 20, tr(STR_NO_RECENT_BOOKS));
   } else {
-    // Prewarm glyphs for visible book titles (drawList uses UI_10_FONT_ID for title, SMALL_FONT_ID for subtitle).
+    // Prewarm glyphs for visible book titles.  UI_10_FONT_ID/SMALL_FONT_ID
+    // are built-in Latin fonts; CJK falls through to global fallback (SD font).
     {
       const int pageItems = UITheme::getInstance().getNumberOfItemsPerPage(renderer, true, false, true, true);
       const int firstVisible = (selectorIndex / pageItems) * pageItems;
@@ -149,8 +150,13 @@ void RecentBooksActivity::render(RenderLock&&) {
         buf += recentBooks[i].title;
         buf += recentBooks[i].author;
       }
-      if (!buf.empty())
-        renderer.ensureSdCardFontGlyphsReady(UI_10_FONT_ID, buf.c_str(), 0x01);
+      if (!buf.empty()) {
+        int fbFontId = renderer.getFallbackFontId();
+        if (fbFontId != 0) {
+          renderer.ensureSdCardFontReady(fbFontId, buf.c_str(), 0x01);
+          renderer.ensureSdCardFontGlyphsReady(fbFontId, buf.c_str(), 0x01);
+        }
+      }
     }
     GUI.drawList(
         renderer, Rect{0, contentTop, pageWidth, contentHeight}, recentBooks.size(), selectorIndex,
