@@ -106,7 +106,7 @@ void drawGlyphs(GfxRenderer& renderer, const VerticalPage& page, int fontId, int
         //   screenX = cursorX + top - glyphY  → visual center at cursorX + top - height/2
         //   screenY = cursorY + left + glyphX  → visual center at cursorY + left + width/2
         // Align ink visual center with the cell center rather than the baseline.
-        const int rCursorX = dx + cellPx / 2 + (gh - gt) / 2 + nudgeX;
+        const int rCursorX = dx + cellPx / 2 + gh / 2 - gt + nudgeX;
         const int rCursorY = rotatedDy + cellPx / 2 - gl - (gw / 2) + nudgeY;
         std::string utf8Buf;
         encodeCodepoint(g.codepoint, utf8Buf);
