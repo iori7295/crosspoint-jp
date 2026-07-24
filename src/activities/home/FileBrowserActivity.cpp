@@ -1,5 +1,6 @@
 #include "FileBrowserActivity.h"
 
+#include <FontCacheManager.h>
 #include <FsHelpers.h>
 #include <GfxRenderer.h>
 #include <HalStorage.h>
@@ -380,7 +381,32 @@ std::string getFileExtension(const std::string& filename) {
   return filename.substr(pos);
 }
 
+void FileBrowserActivity::warmVisibleEntries() {
+  const int fontId = SETTINGS.getReaderFontId();
+  constexpr uint8_t kStyleMask = 0x03; // regular + bold
+  const WarmKey key{basepath, files.size(), fontId, kStyleMask};
+  if (key == lastWarmKey_) return;
+  lastWarmKey_ = key;
+
+  std::vector<std::string> words;
+  words.reserve(files.size());
+  std::string joined;
+  for (size_t i = 0; i < files.size(); ++i) {
+    const auto label = getFileName(files[i]);
+    words.push_back(label);
+    joined += label;
+    joined += '\n';
+  }
+  if (words.empty()) return;
+
+  renderer.ensureSdCardFontReady(fontId, words, false, kStyleMask);
+  if (auto* fcm = renderer.getFontCacheManager()) {
+    fcm->prewarmCache(fontId, joined.c_str(), kStyleMask);
+  }
+}
+
 void FileBrowserActivity::render(RenderLock&&) {
+  warmVisibleEntries();
   renderer.clearScreen();
 
   const auto pageWidth = renderer.getScreenWidth();

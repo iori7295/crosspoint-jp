@@ -1083,6 +1083,19 @@ bool VerticalSection::createSectionFile(const int fontId, const uint16_t viewpor
     return false;
   }
 
+  // If the build dropped glyphs on low heap the cache is corrupt -- remove it
+  // so the next open tries again (perhaps with more heap available) instead of
+  // serving a permanently sparse chapter.
+  if (lastBuildDroppedForHeap_) {
+    LOG_ERR("VSC", "Build dropped glyphs on low heap; discarding cache for spine %d", spineIndex);
+    file.close();
+    Storage.remove(filePath.c_str());
+    pageOffsets_.clear();
+    buildInProgress_ = false;
+    loan.end();
+    return false;
+  }
+
   const auto indexOffset = static_cast<uint32_t>(file.position());
   for (const uint32_t off : pageOffsets_) {
     serialization::writePod(file, off);
@@ -1100,7 +1113,6 @@ bool VerticalSection::createSectionFile(const int fontId, const uint16_t viewpor
   }
   serialization::writePod(file, pageCount);
   serialization::writePod(file, indexOffset);
-  (void)lastBuildDroppedForHeap_;
   file.close();
   loan.end();
   buildInProgress_ = false;

@@ -122,9 +122,13 @@ void HomeActivity::onEnter() {
   // SD reads at render time.
   if (auto* fcm = renderer.getFontCacheManager()) {
     int fontId = SETTINGS.getReaderFontId();
+    constexpr uint8_t kHomeStyleMask = 0x03;  // regular + bold
     for (const auto& book : recentBooks) {
       if (!book.title.empty()) {
-        fcm->prewarmCache(fontId, book.title.c_str(), 0x01);
+        fcm->prewarmCache(fontId, book.title.c_str(), kHomeStyleMask);
+      }
+      if (!book.author.empty()) {
+        fcm->prewarmCache(fontId, book.author.c_str(), kHomeStyleMask);
       }
     }
   }
