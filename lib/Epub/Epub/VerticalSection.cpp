@@ -1101,7 +1101,7 @@ bool VerticalSection::startBuild(const int fontId, const uint16_t viewportWidth,
   // already lets EpubReaderActivity use the same code path for vertical
   // and horizontal section loading.
   build_ = std::move(bs);
-  partial_ = true;
+  partial_ = false;
   pageOffsets_.clear();
   loadedPageIndex_ = -1;
   pageCount = 0;
@@ -1111,9 +1111,22 @@ bool VerticalSection::startBuild(const int fontId, const uint16_t viewportWidth,
 bool VerticalSection::buildSomeMore(int /*maxPages*/) {
   if (!build_) return true;  // already complete
 
-  streamParseAndLayout(build_->out, build_->fontId, build_->viewportWidth, build_->viewportHeight);
+  // The real heavy work (HTML inflate, XML parse, layout, glyph cache write)
+  // happens here, NOT in startBuild().  The 48 KB framebuffer loan must
+  // cover this scope.
+  GfxRenderer::FrameBufferLoan loan(renderer);
 
-  // Check for heap-failure abort
+  const bool ok = streamParseAndLayout(build_->out, build_->fontId, build_->viewportWidth,
+                                        build_->viewportHeight);
+  loan.end();
+
+  if (!ok) {
+    LOG_ERR("VSC", "streamParseAndLayout failed for spine %d", spineIndex);
+    abandonBuild();
+    return false;
+  }
+
+  // Check for heap-failure abort (glyphs dropped despite forced page breaks)
   if (lastBuildDroppedForHeap_) {
     LOG_ERR("VSC", "Build dropped glyphs; discarding cache for spine %d", spineIndex);
     abandonBuild();
@@ -1144,14 +1157,18 @@ void VerticalSection::abandonBuild() {
 
 void VerticalSection::suspendBuild() {
   if (!build_) return;
-  // Write whatever we have so far as a partial cache
-  if (pageOffsets_.size() >= 1) {
-    finalizeVerticalCache(build_->out, pageOffsets_, pageCount);
+  if (pageOffsets_.empty()) {
+    abandonBuild();
+    return;
+  }
+  pageCount = static_cast<uint16_t>(pageOffsets_.size());
+  if (!finalizeVerticalCache(build_->out, pageOffsets_, pageCount)) {
+    abandonBuild();
+    return;
   }
   build_->out.close();
   build_.reset();
-  // partial_ stays true — loadSectionFile will recognise the partial file
-  // by its version sentinel and loadPage will serve the cached pages.
+  partial_ = true;
 }
 
 bool VerticalSection::createSectionFile(const int fontId, const uint16_t viewportWidth,

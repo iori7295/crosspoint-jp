@@ -1161,6 +1161,24 @@ void SdCardFont::mergeIntoAdvanceTable(uint8_t styleIdx, const AdvanceEntry* sor
   uint32_t mergedCap = oldSize + newCount;
   if (mergedCap > ADVANCE_CACHE_LIMIT) mergedCap = ADVANCE_CACHE_LIMIT;
 
+  // Low-heap guard: don't try to allocate more entries than the current
+  // maxAlloc can reasonably satisfy.  2 KB headroom leaves room for the
+  // rest of the stack.
+  {
+    const uint32_t freeSlots =
+        (ESP.getMaxAllocHeap() > 2048)
+            ? static_cast<uint32_t>((ESP.getMaxAllocHeap() - 2048) / sizeof(AdvanceEntry))
+            : 0;
+    if (freeSlots <= oldSize) {
+      LOG_DBG("SDCF", "mergeIntoAdvanceTable: skip (freeCap=%u <= old=%u, new=%u, style=%u)",
+              freeSlots, oldSize, newCount, styleIdx);
+      return;
+    }
+    if (mergedCap > freeSlots) {
+      mergedCap = freeSlots;
+    }
+  }
+
   AdvanceEntry* merged = new (std::nothrow) AdvanceEntry[mergedCap];
   if (!merged) {
     LOG_ERR("SDCF", "mergeIntoAdvanceTable: alloc failed (%u entries) style %u", mergedCap, styleIdx);
