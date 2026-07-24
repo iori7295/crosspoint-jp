@@ -382,11 +382,13 @@ std::string getFileExtension(const std::string& filename) {
 }
 
 void FileBrowserActivity::warmVisibleEntries() {
-  const int fontId = SETTINGS.getReaderFontId();
-  constexpr uint8_t kStyleMask = 0x03; // regular + bold
-  const WarmKey key{basepath, files.size(), fontId, kStyleMask};
-  if (key == lastWarmKey_) return;
-  lastWarmKey_ = key;
+  // FileBrowser draws list items with UI_10_FONT_ID and the path bar with
+  // SMALL_FONT_ID (see LyraTheme::drawList / FileBrowserActivity::render).
+  // Warming the reader font (SETTINGS.getReaderFontId()) is useless here:
+  // the SD font mini cache is per-fontId, so warming one font doesn't help
+  // the other (the fix for the 25-second list freeze).  Warm both UI fonts.
+  constexpr int kFontIds[] = {UI_10_FONT_ID, SMALL_FONT_ID};
+  constexpr uint8_t kStyleMask = 0x03;
 
   std::vector<std::string> words;
   words.reserve(files.size());
@@ -399,9 +401,11 @@ void FileBrowserActivity::warmVisibleEntries() {
   }
   if (words.empty()) return;
 
-  renderer.ensureSdCardFontReady(fontId, words, false, kStyleMask);
-  if (auto* fcm = renderer.getFontCacheManager()) {
-    fcm->prewarmCache(fontId, joined.c_str(), kStyleMask);
+  for (const int fontId : kFontIds) {
+    renderer.ensureSdCardFontReady(fontId, words, false, kStyleMask);
+    if (auto* fcm = renderer.getFontCacheManager()) {
+      fcm->prewarmCache(fontId, joined.c_str(), kStyleMask);
+    }
   }
 }
 

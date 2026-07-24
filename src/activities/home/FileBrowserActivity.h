@@ -38,18 +38,6 @@ class FileBrowserActivity final : public Activity {
   void loadFiles();
   size_t findEntry(const std::string& name) const;
 
-  // Visible-entry prewarm state: skip re-warming when nothing changed.
-  struct WarmKey {
-    std::string path;
-    size_t count = 0;
-    int fontId = -1;
-    uint8_t styleMask = 0;
-    bool operator==(const WarmKey& o) const {
-      return path == o.path && count == o.count && fontId == o.fontId && styleMask == o.styleMask;
-    }
-    bool operator!=(const WarmKey& o) const { return !(*this == o); }
-  };
-  WarmKey lastWarmKey_;
   void warmVisibleEntries();
 
  public:

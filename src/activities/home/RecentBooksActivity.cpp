@@ -153,9 +153,9 @@ void RecentBooksActivity::promptRemoveBook(const std::string& path, const std::s
 
 void RecentBooksActivity::render(RenderLock&&) {
   // Prewarm CJK glyphs for visible book titles so drawList doesn't pay
-  // one-by-one SD reads during the rendering pass.
+  // one-by-one SD reads during the rendering pass.  drawList uses UI_10_FONT_ID.
   if (auto* fcm = renderer.getFontCacheManager()) {
-    int fontId = SETTINGS.getReaderFontId();
+    constexpr int kFontId = UI_10_FONT_ID;
     constexpr uint8_t kStyleMask = 0x03;
     std::vector<std::string> titles;
     titles.reserve(recentBooks.size());
@@ -168,8 +168,8 @@ void RecentBooksActivity::render(RenderLock&&) {
       }
     }
     if (!titles.empty()) {
-      renderer.ensureSdCardFontReady(fontId, titles, false, kStyleMask);
-      fcm->prewarmCache(fontId, joined.c_str(), kStyleMask);
+      renderer.ensureSdCardFontReady(kFontId, titles, false, kStyleMask);
+      fcm->prewarmCache(kFontId, joined.c_str(), kStyleMask);
     }
   }
 

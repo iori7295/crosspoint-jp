@@ -119,16 +119,16 @@ void HomeActivity::onEnter() {
 
   // Prewarm SD card font with recent book titles so CJK glyphs load
   // before the rendering pass measures/draws them, avoiding one-by-one
-  // SD reads at render time.
+  // SD reads at render time.  The theme draws titles in UI_12_FONT_ID
+  // (bold) and authors in UI_10_FONT_ID (regular), not the reader font.
   if (auto* fcm = renderer.getFontCacheManager()) {
-    int fontId = SETTINGS.getReaderFontId();
-    constexpr uint8_t kHomeStyleMask = 0x03;  // regular + bold
+    constexpr uint8_t kStyleMask = 0x03;
     for (const auto& book : recentBooks) {
       if (!book.title.empty()) {
-        fcm->prewarmCache(fontId, book.title.c_str(), kHomeStyleMask);
+        fcm->prewarmCache(UI_12_FONT_ID, book.title.c_str(), kStyleMask);
       }
       if (!book.author.empty()) {
-        fcm->prewarmCache(fontId, book.author.c_str(), kHomeStyleMask);
+        fcm->prewarmCache(UI_10_FONT_ID, book.author.c_str(), kStyleMask);
       }
     }
   }
