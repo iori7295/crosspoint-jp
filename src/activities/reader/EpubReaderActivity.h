@@ -212,7 +212,7 @@ class EpubReaderActivity final : public Activity {
   // and while the build is heap-paused (no work is happening, so spinning at full
   // speed would only burn battery; the paused gate still retries every loop pass).
   bool skipLoopDelay() override {
-    return (section && section->isBuilding()) || (verticalSection_ && verticalSection_->isBuilding()) && !buildHeapPaused;
+    return (section && section->isBuilding()) && !buildHeapPaused;
   }
   bool isReaderActivity() const override { return true; }
   ScreenshotInfo getScreenshotInfo() const override;

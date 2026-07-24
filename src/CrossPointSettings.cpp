@@ -37,34 +37,9 @@ void CrossPointSettings::validateFrontButtonMapping(CrossPointSettings& settings
         settings.frontButtonLeft = FRONT_HW_LEFT;
         settings.frontButtonRight = FRONT_HW_RIGHT;
         return;
-  }
-}
-
-int CrossPointSettings::getRubyFontId() const {
-  if (sdFontFamilyName[0] != '\0' && sdFontIdResolver) {
-    int id = sdFontIdResolver(sdFontResolverCtx, sdFontFamilyName, SMALL);
-    if (id != 0) return id;
-  }
-  switch (fontFamily) {
-    case NOTOSERIF:
-    default:
-      switch (fontSize) {
-        case SMALL:      return NOTOSERIF_12_FONT_ID;
-        case MEDIUM:     return NOTOSERIF_12_FONT_ID;
-        case LARGE:      return NOTOSERIF_14_FONT_ID;
-        case EXTRA_LARGE: return NOTOSERIF_16_FONT_ID;
       }
-    case NOTOSANS:
-      switch (fontSize) {
-        case SMALL:      return NOTOSANS_12_FONT_ID;
-        case MEDIUM:     return NOTOSANS_12_FONT_ID;
-        case LARGE:      return NOTOSANS_14_FONT_ID;
-        case EXTRA_LARGE: return NOTOSANS_16_FONT_ID;
-      }
+    }
   }
-  return NOTOSERIF_12_FONT_ID;
-}
-
 }
 
 uint8_t CrossPointSettings::sleepTimeoutEnumToMinutes(const uint8_t legacyValue) {
@@ -365,4 +340,29 @@ int CrossPointSettings::getReaderFontId() const {
           return NOTOSANS_18_FONT_ID;
       }
   }
+}
+
+int CrossPointSettings::getRubyFontId() const {
+  if (sdFontFamilyName[0] != '\0' && sdFontIdResolver) {
+    int id = sdFontIdResolver(sdFontResolverCtx, sdFontFamilyName, SMALL);
+    if (id != 0) return id;
+  }
+  switch (fontFamily) {
+    case NOTOSERIF:
+    default:
+      switch (fontSize) {
+        case SMALL:      return NOTOSERIF_12_FONT_ID;
+        case MEDIUM:     return NOTOSERIF_12_FONT_ID;
+        case LARGE:      return NOTOSERIF_14_FONT_ID;
+        case EXTRA_LARGE: return NOTOSERIF_16_FONT_ID;
+      }
+    case NOTOSANS:
+      switch (fontSize) {
+        case SMALL:      return NOTOSANS_12_FONT_ID;
+        case MEDIUM:     return NOTOSANS_12_FONT_ID;
+        case LARGE:      return NOTOSANS_14_FONT_ID;
+        case EXTRA_LARGE: return NOTOSANS_16_FONT_ID;
+      }
+  }
+  return NOTOSERIF_12_FONT_ID;
 }

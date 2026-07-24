@@ -1986,17 +1986,12 @@ void EpubReaderActivity::silentIndexNextChapterIfNeeded(const uint16_t viewportW
     nextVSec.createSectionFile(SETTINGS.getReaderFontId(), viewportWidth, viewportHeight);
   } else {
     Section nextSection(epub, nextSpineIndex, renderer);
-    if (nextSection.loadSectionFile(SETTINGS.getReaderFontId(), SETTINGS.getReaderLineCompression(),
-                                    SETTINGS.extraParagraphSpacing, SETTINGS.paragraphAlignment, viewportWidth,
-                                    viewportHeight, SETTINGS.hyphenationEnabled, SETTINGS.embeddedStyle,
-                                    SETTINGS.imageRendering, SETTINGS.focusReadingEnabled)) {
+    const ReaderRenderSpec buildSpec = SETTINGS.readerRenderSpec(viewportWidth, viewportHeight);
+    if (nextSection.loadSectionFile(buildSpec)) {
       return;
     }
     LOG_DBG("ERS", "Silently indexing next chapter: %d", nextSpineIndex);
-    nextSection.createSectionFile(SETTINGS.getReaderFontId(), SETTINGS.getReaderLineCompression(),
-                                  SETTINGS.extraParagraphSpacing, SETTINGS.paragraphAlignment, viewportWidth,
-                                  viewportHeight, SETTINGS.hyphenationEnabled, SETTINGS.embeddedStyle,
-                                  SETTINGS.imageRendering, SETTINGS.focusReadingEnabled);
+    nextSection.createSectionFile(buildSpec);
   }
 }
 
@@ -2023,17 +2018,12 @@ bool EpubReaderActivity::loadSectionForCurrentMode(uint16_t viewportWidth, uint1
             ESP.getMaxAllocHeap());
   } else {
     section = std::make_unique<Section>(epub, currentSpineIndex, renderer);
-    if (!section->loadSectionFile(SETTINGS.getReaderFontId(), SETTINGS.getReaderLineCompression(),
-                                  SETTINGS.extraParagraphSpacing, SETTINGS.paragraphAlignment, viewportWidth,
-                                  viewportHeight, SETTINGS.hyphenationEnabled, SETTINGS.embeddedStyle,
-                                  SETTINGS.imageRendering, SETTINGS.focusReadingEnabled)) {
+    const ReaderRenderSpec buildSpec = SETTINGS.readerRenderSpec(viewportWidth, viewportHeight);
+    if (!section->loadSectionFile(buildSpec)) {
       LOG_DBG("ERS", "Cache not found, building...");
       GUI.drawPopup(renderer, tr(STR_INDEXING));
       const auto popupFn = [this]() { GUI.drawPopup(renderer, tr(STR_INDEXING)); };
-      if (!section->createSectionFile(SETTINGS.getReaderFontId(), SETTINGS.getReaderLineCompression(),
-                                      SETTINGS.extraParagraphSpacing, SETTINGS.paragraphAlignment, viewportWidth,
-                                      viewportHeight, SETTINGS.hyphenationEnabled, SETTINGS.embeddedStyle,
-                                      SETTINGS.imageRendering, SETTINGS.focusReadingEnabled, popupFn)) {
+      if (!section->createSectionFile(buildSpec, popupFn)) {
         LOG_ERR("ERS", "Failed to persist page data to SD");
         resetSection();
         return false;
