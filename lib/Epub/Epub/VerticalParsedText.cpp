@@ -599,9 +599,18 @@ std::vector<VerticalPage> VerticalParsedText::layoutPages(void* ctx, PageReadyCa
     // Last resort: grow by a single element so we never silently drop a glyph
     // even on a critically fragmented heap.  The next push will try doubled →
     // linear → single again, so if the heap recovers it self-throttles up.
+    // On a sub-3 KB heap even the 2 KB SMALL_ALLOC_MARGIN overwhelms the
+    // single-element request (~432 bytes) — try with a minimal 512-byte margin
+    // so the absolute smallest growth still passes.
+    constexpr size_t MIN_HEADROOM = 512;
     const size_t singleCapacity = glyphs.capacity() + 1;
     const size_t singleBytes = singleCapacity * sizeof(VerticalGlyph);
     if (ESP.getMaxAllocHeap() >= singleBytes + SMALL_ALLOC_MARGIN) {
+      glyphs.reserve(singleCapacity);
+      glyphs.push_back(g);
+      return true;
+    }
+    if (ESP.getMaxAllocHeap() >= singleBytes + MIN_HEADROOM) {
       glyphs.reserve(singleCapacity);
       glyphs.push_back(g);
       return true;
@@ -654,6 +663,8 @@ std::vector<VerticalPage> VerticalParsedText::layoutPages(void* ctx, PageReadyCa
   // page break (flush the current page to free its backing allocations) and retry.
   // Silently dropping glyphs produces sparse/corrupt pages that are worse than a
   // slightly early page break.  If the retry also fails the build must abort.
+  // CRITICAL: only retry ONCE to avoid an infinite loop when maxAlloc is so low
+  // (< 3 KB) that even a fresh page can't reserve glyph storage.
   auto appendGlyphOrForcePage = [&](const VerticalGlyph& g) -> bool {
     if (pushGlyph(page.glyphs, g)) return true;
 
@@ -663,7 +674,7 @@ std::vector<VerticalPage> VerticalParsedText::layoutPages(void* ctx, PageReadyCa
 
     if (pushGlyph(page.glyphs, g)) return true;
 
-    LOG_ERR("VPT", "OOM even after forced page break (free=%u)", ESP.getMaxAllocHeap());
+    LOG_ERR("VPT", "OOM after one forced page break (free=%u); aborting layout", ESP.getMaxAllocHeap());
     everDroppedForHeap_ = true;
     return false;
   };
