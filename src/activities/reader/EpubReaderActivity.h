@@ -2,6 +2,8 @@
 #include <Epub.h>
 #include <Epub/FootnoteEntry.h>
 #include <Epub/Section.h>
+#include <Epub/VerticalSection.h>
+#include <Epub/blocks/VerticalTextBlock.h>
 
 #include <optional>
 
@@ -14,6 +16,7 @@
 class EpubReaderActivity final : public Activity {
   std::shared_ptr<Epub> epub;
   std::unique_ptr<Section> section = nullptr;
+  std::unique_ptr<VerticalSection> verticalSection_;
   int currentSpineIndex = 0;
   int nextPageNumber = 0;
   std::optional<uint16_t> pendingPageJump;
@@ -161,6 +164,7 @@ class EpubReaderActivity final : public Activity {
   // No-op while the section is still building or when the pagination is unchanged (plain resume).
   bool applyDeferredReposition();
   bool saveProgress(int spineIndex, int currentPage, int pageCount);
+  void silentIndexNextChapterIfNeeded(uint16_t viewportWidth, uint16_t viewportHeight);
   // Jump to a percentage of the book (0-100), mapping it to spine and page.
   void jumpToPercent(int percent);
   void onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction action);
@@ -181,6 +185,19 @@ class EpubReaderActivity final : public Activity {
   void navigateToHref(const std::string& href, bool savePosition = false);
   void restoreSavedPosition();
 
+  // Vertical-text mode helpers
+  bool isVerticalActive() const { return verticalSection_ != nullptr; }
+  bool hasActiveSection() const { return section != nullptr || verticalSection_ != nullptr; }
+  void resetSection() {
+    section.reset();
+    verticalSection_.reset();
+  }
+  int getCurrentPageCount() const;
+  int getCurrentPage() const;
+  void setCurrentPage(int page);
+  bool loadSectionForCurrentMode(uint16_t viewportWidth, uint16_t viewportHeight);
+  bool isJapaneseBook() const;
+
  public:
   explicit EpubReaderActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::unique_ptr<Epub> epub)
       : Activity("EpubReader", renderer, mappedInput), epub(std::move(epub)) {}
@@ -194,7 +211,9 @@ class EpubReaderActivity final : public Activity {
   // it from page 0. Reverts to normal power behavior the moment the build finishes,
   // and while the build is heap-paused (no work is happening, so spinning at full
   // speed would only burn battery; the paused gate still retries every loop pass).
-  bool skipLoopDelay() override { return section && section->isBuilding() && !buildHeapPaused; }
+  bool skipLoopDelay() override {
+    return (section && section->isBuilding()) || (verticalSection_ && verticalSection_->isBuilding()) && !buildHeapPaused;
+  }
   bool isReaderActivity() const override { return true; }
   ScreenshotInfo getScreenshotInfo() const override;
   CrossPointPosition getCurrentPosition() const;
