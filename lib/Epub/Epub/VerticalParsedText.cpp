@@ -596,8 +596,19 @@ std::vector<VerticalPage> VerticalParsedText::layoutPages(void* ctx, PageReadyCa
       return true;
     }
 
+    // Last resort: grow by a single element so we never silently drop a glyph
+    // even on a critically fragmented heap.  The next push will try doubled →
+    // linear → single again, so if the heap recovers it self-throttles up.
+    const size_t singleCapacity = glyphs.capacity() + 1;
+    const size_t singleBytes = singleCapacity * sizeof(VerticalGlyph);
+    if (ESP.getMaxAllocHeap() >= singleBytes + SMALL_ALLOC_MARGIN) {
+      glyphs.reserve(singleCapacity);
+      glyphs.push_back(g);
+      return true;
+    }
+
     LOG_ERR("VPT", "Low heap (%u bytes, need ~%u); dropping glyph", ESP.getMaxAllocHeap(),
-            static_cast<unsigned>(linearBytes));
+            static_cast<unsigned>(singleBytes));
     everDroppedForHeap_ = true;
     return false;
   };
