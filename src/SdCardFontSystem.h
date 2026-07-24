@@ -26,6 +26,13 @@ class SdCardFontSystem {
   /// Returns 0 if not found. Used by CrossPointSettings::getReaderFontId().
   int resolveFontId(const char* familyName, uint8_t fontSizeEnum) const;
 
+  /// Register the loaded SD font as the global glyph fallback in EpdFontFamily.
+  /// Must be called after any loadFamily/unloadAll to refresh stale pointers.
+  void setGlobalFontFallback(GfxRenderer& renderer) const;
+
+  /// Unload all SD fonts and clear global fallback.
+  void unloadFonts(GfxRenderer& renderer);
+
   /// Access the registry (e.g. for settings UI to enumerate available fonts).
   const SdCardFontRegistry& registry() const { return registry_; }
 

@@ -1,5 +1,6 @@
 #include "SdCardFontSystem.h"
 
+#include <EpdFontFamily.h>
 #include <GfxRenderer.h>
 #include <Logging.h>
 
@@ -122,6 +123,37 @@ void SdCardFontSystem::ensureLoaded(GfxRenderer& renderer) {
     SETTINGS.sdFontFamilyName[0] = '\0';
     SETTINGS.saveToFile();
   }
+  // Global fallback pointer must be refreshed after loadFamily/unloadAll:
+  // those destroy old EpdFontFamily objects and create new ones at different
+  // addresses.  See also Phase-5 fix in the 1.4.1 branch.
+  setGlobalFontFallback(renderer);
+}
+
+void SdCardFontSystem::setGlobalFontFallback(GfxRenderer& renderer) const {
+  int fbFontId = 0;
+  if (SETTINGS.sdFontFamilyName[0] != '\0') {
+    fbFontId = resolveFontId(SETTINGS.sdFontFamilyName, SETTINGS.fontSize);
+  }
+  if (fbFontId == 0) {
+    for (const auto& [id, _] : renderer.getFontMap()) {
+      if (renderer.isSdCardFont(id)) {
+        fbFontId = id;
+        break;
+      }
+    }
+  }
+  if (fbFontId != 0) {
+    auto it = renderer.getFontMap().find(fbFontId);
+    if (it != renderer.getFontMap().end()) {
+      EpdFontFamily::setGlobalFallback(&it->second);
+      LOG_DBG("SDFS", "Global fallback set to font ID %d", fbFontId);
+    }
+  }
+}
+
+void SdCardFontSystem::unloadFonts(GfxRenderer& renderer) {
+  manager_.unloadAll(renderer);
+  EpdFontFamily::setGlobalFallback(nullptr);
 }
 
 void SdCardFontSystem::setupUiFallbacks(GfxRenderer& renderer) {

@@ -1,7 +1,6 @@
 #include "EpdFontFamily.h"
 
 const EpdFont* EpdFontFamily::getFont(const Style style) const {
-  // Extract font style bits; render-time overlay bits do not affect font selection.
   const bool hasBold = (style & BOLD) != 0;
   const bool hasItalic = (style & ITALIC) != 0;
 
@@ -25,11 +24,54 @@ void EpdFontFamily::getTextDimensions(const char* string, int* w, int* h, const 
 const EpdFontData* EpdFontFamily::getData(const Style style) const { return getFont(style)->data; }
 
 const EpdGlyph* EpdFontFamily::getGlyph(const uint32_t cp, const Style style) const {
-  return getFont(style)->getGlyph(cp);
+  const EpdFont* f = getFont(style);
+  if (f->hasCodepoint(cp)) return f->getGlyph(cp);
+  if (fallbackFamily) {
+    const EpdFont* fbFont = fallbackFamily->getFont(style);
+    if (fbFont->hasCodepoint(cp)) return fbFont->getGlyph(cp);
+  }
+  if (globalFallback_ && globalFallback_ != this && globalFallback_ != fallbackFamily) {
+    const EpdFont* gf = globalFallback_->getFont(style);
+    if (gf->hasCodepoint(cp)) return gf->getGlyph(cp);
+    if (gf->data->glyphMissHandler) {
+      const EpdGlyph* loaded = gf->data->glyphMissHandler(gf->data->glyphMissCtx, cp);
+      if (loaded) return loaded;
+    }
+  }
+  return f->getGlyph(cp);
 }
 
-bool EpdFontFamily::hasCodepoint(const uint32_t cp, const Style style) const {
-  return getFont(style)->hasCodepoint(cp);
+const EpdGlyph* EpdFontFamily::getGlyphResident(const uint32_t cp, const Style style) const {
+  const EpdFont* f = getFont(style);
+  if (f->hasCodepoint(cp)) return f->getGlyph(cp);
+  if (fallbackFamily) {
+    const EpdFont* fbFont = fallbackFamily->getFont(style);
+    if (fbFont->hasCodepoint(cp)) return fbFont->getGlyph(cp);
+  }
+  if (globalFallback_ && globalFallback_ != this && globalFallback_ != fallbackFamily) {
+    const EpdFont* gf = globalFallback_->getFont(style);
+    if (gf->hasCodepoint(cp)) return gf->getGlyph(cp);
+  }
+  return nullptr;
+}
+
+const EpdFontData* EpdFontFamily::getDataForGlyph(const uint32_t cp, const Style style) const {
+  const EpdFont* f = getFont(style);
+  if (f->hasCodepoint(cp)) return f->data;
+  if (fallbackFamily) {
+    const EpdFont* fbFont = fallbackFamily->getFont(style);
+    if (fbFont->hasCodepoint(cp)) return fbFont->data;
+  }
+  if (globalFallback_ && globalFallback_ != this && globalFallback_ != fallbackFamily) {
+    const EpdFont* gf = globalFallback_->getFont(style);
+    if (gf->hasCodepoint(cp)) return gf->data;
+    if (gf->data->glyphMissHandler) {
+      const EpdGlyph* loaded = gf->data->glyphMissHandler(gf->data->glyphMissCtx, cp);
+      if (loaded) return gf->data;
+    }
+  }
+  if (fallbackFamily) return fallbackFamily->getData(style);
+  return f->data;
 }
 
 int8_t EpdFontFamily::getKerning(const uint32_t leftCp, const uint32_t rightCp, const Style style) const {
