@@ -785,16 +785,22 @@ struct LayoutPageSink final : ParagraphSink {
   // page, so render-time on-demand (overflow) reads are eliminated.  Call
   // BEFORE writePage() serialises the page, since that serialization may be
   // immediately followed by rendering.
-  void ensureGlyphsForPage(const VerticalPage& p, int fontId_) {
+  // Build-time advance-table warming (glyph bitmap NOT loaded — that would
+  // spike heap by ~16 KB per page during the build).  The renderer will warm
+  // bitmaps on demand when the page is first displayed; advance-only warming
+  // is enough to keep column measurement fast and avoid layout OOM.
+  void warmAdvanceTableForPage(const VerticalPage& p, int fontId_) {
     if (p.isImagePage() || p.glyphs.empty()) return;
     if (!renderer.isSdCardFont(fontId_)) return;
+    // Advance-table warming is much cheaper than glyph-bitmap prewarm so we
+    // always run it.  The old ensureSdCardFontGlyphsReady was the heap killer;
+    // ensureSdCardFontReady only builds the advance-metadata table (~2 KB).
     std::string utf8;
     utf8.reserve(p.glyphs.size() * 3);
     uint8_t styleMask = 0;
     for (const auto& g : p.glyphs) {
       styleMask |= (1u << (g.style & 3));
       appendUtf8(g.codepoint, utf8);
-      // Ruby text characters also need prewarming
       for (size_t i = 0; i < g.rubyText.size();) {
         const auto c0 = static_cast<unsigned char>(g.rubyText[i]);
         size_t clen = 1;
@@ -804,14 +810,13 @@ struct LayoutPageSink final : ParagraphSink {
         i += clen;
       }
     }
-    renderer.ensureSdCardFontGlyphsReady(fontId_, utf8.c_str(), styleMask ? styleMask : 0x01);
+    renderer.ensureSdCardFontReady(fontId_, utf8.c_str(), styleMask ? styleMask : 0x01);
   }
 
   void writeOne(const VerticalPage& p) {
     pageOffsets.push_back(static_cast<uint32_t>(out.position()));
-    // Prewarm glyph bitmaps before serialising, so the subsequent render pass
-    // finds them in miniGlyphs/miniBitmap instead of hitting on-demand overflow.
-    ensureGlyphsForPage(p, fontId);
+    // Advance-table only (not glyph bitmaps) during build — see warmAdvanceTableForPage.
+    warmAdvanceTableForPage(p, fontId);
     if (!writePage(out, p)) {
       LOG_ERR("VSC", "Failed to write page %zu to cache", pageOffsets.size() - 1);
       failed = true;
@@ -1053,84 +1058,107 @@ bool VerticalSection::streamParseAndLayout(HalFile& out, const int fontId, const
   return true;
 }
 
-bool VerticalSection::createSectionFile(const int fontId, const uint16_t viewportWidth,
-                                         const uint16_t viewportHeight) {
-  buildInProgress_ = true;
-  // Lend the 48 KB framebuffer to heap during the build (same pattern as
-  // Section::createSectionFile / startBuild in the 1.5 reader).  The display
-  // keeps showing the last image; restoreFrameBufferAfterBuild() repaints white.
-  GfxRenderer::FrameBufferLoan loan(renderer);
+// Write the page-offset index and patch the header pageCount field.
+// Called by finalizeBuild() after streamParseAndLayout completes.
+static bool finalizeVerticalCache(HalFile& file, const std::vector<uint32_t>& pageOffsets, uint16_t& pageCount) {
+  const auto indexOffset = static_cast<uint32_t>(file.position());
+  for (const uint32_t off : pageOffsets) {
+    serialization::writePod(file, off);
+  }
+  pageCount = static_cast<uint16_t>(pageOffsets.size());
+  if (!file.seek(HEADER_PAGECOUNT_OFFSET)) return false;
+  serialization::writePod(file, pageCount);
+  serialization::writePod(file, indexOffset);
+  return true;
+}
 
+bool VerticalSection::startBuild(const int fontId, const uint16_t viewportWidth,
+                                  const uint16_t viewportHeight) {
+  GfxRenderer::FrameBufferLoan loan(renderer);
   const auto vsectionsDir = epub->getCachePath() + "/vsections";
   Storage.mkdir(vsectionsDir.c_str());
 
+  auto bs = std::make_unique<BuildState>();
+  bs->fontId = fontId;
+  bs->viewportWidth = viewportWidth;
+  bs->viewportHeight = viewportHeight;
+  if (!Storage.openFileForWrite("VSC", filePath, bs->out)) {
+    return false;
+  }
+
+  serialization::writePod(bs->out, VSECTION_FILE_VERSION);
+  serialization::writePod(bs->out, fontId);
+  serialization::writePod(bs->out, viewportWidth);
+  serialization::writePod(bs->out, viewportHeight);
+  const uint16_t pageCountPlaceholder = 0;
+  const uint32_t indexOffsetPlaceholder = 0;
+  serialization::writePod(bs->out, pageCountPlaceholder);
+  serialization::writePod(bs->out, indexOffsetPlaceholder);
+
+  // For now the whole chapter is still laid out synchronously inside
+  // buildSomeMore — true incremental build (paragraph/run chunking) is
+  // planned as follow-up work.  The move to startBuild/buildSomeMore
+  // already lets EpubReaderActivity use the same code path for vertical
+  // and horizontal section loading.
+  build_ = std::move(bs);
+  partial_ = true;
   pageOffsets_.clear();
   loadedPageIndex_ = -1;
   pageCount = 0;
+  return true;
+}
 
-  HalFile file;
-  if (!Storage.openFileForWrite("VSC", filePath, file)) {
-    buildInProgress_ = false;
-    loan.end();
-    return false;
-  }
+bool VerticalSection::buildSomeMore(int /*maxPages*/) {
+  if (!build_) return true;  // already complete
 
-  // Header with placeholders; pageCount and the offset-table location aren't known until all
-  // pages have been streamed out, so they're patched by the seek-back below. The write mode is
-  // O_RDWR (not append), so the seek-back write lands in place.
-  serialization::writePod(file, VSECTION_FILE_VERSION);
-  serialization::writePod(file, fontId);
-  serialization::writePod(file, viewportWidth);
-  serialization::writePod(file, viewportHeight);
-  const uint16_t pageCountPlaceholder = 0;
-  const uint32_t indexOffsetPlaceholder = 0;
-  serialization::writePod(file, pageCountPlaceholder);
-  serialization::writePod(file, indexOffsetPlaceholder);
+  streamParseAndLayout(build_->out, build_->fontId, build_->viewportWidth, build_->viewportHeight);
 
-  if (!streamParseAndLayout(file, fontId, viewportWidth, viewportHeight)) {
-    file.close();
-    Storage.remove(filePath.c_str());
-    pageOffsets_.clear();
-    buildInProgress_ = false;
-    loan.end();
-    return false;
-  }
-
-  // If the build dropped glyphs on low heap the cache is corrupt -- remove it
-  // so the next open tries again (perhaps with more heap available) instead of
-  // serving a permanently sparse chapter.
+  // Check for heap-failure abort
   if (lastBuildDroppedForHeap_) {
-    LOG_ERR("VSC", "Build dropped glyphs on low heap; discarding cache for spine %d", spineIndex);
-    file.close();
-    Storage.remove(filePath.c_str());
-    pageOffsets_.clear();
-    buildInProgress_ = false;
-    loan.end();
+    LOG_ERR("VSC", "Build dropped glyphs; discarding cache for spine %d", spineIndex);
+    abandonBuild();
     return false;
   }
 
-  const auto indexOffset = static_cast<uint32_t>(file.position());
-  for (const uint32_t off : pageOffsets_) {
-    serialization::writePod(file, off);
-  }
-
-  pageCount = static_cast<uint16_t>(pageOffsets_.size());
-  if (!file.seek(HEADER_PAGECOUNT_OFFSET)) {
-    file.close();
-    Storage.remove(filePath.c_str());
-    pageOffsets_.clear();
-    pageCount = 0;
-    buildInProgress_ = false;
-    loan.end();
+  // Finalize: write offset index and patch header
+  if (!finalizeVerticalCache(build_->out, pageOffsets_, pageCount)) {
+    abandonBuild();
     return false;
   }
-  serialization::writePod(file, pageCount);
-  serialization::writePod(file, indexOffset);
-  file.close();
-  loan.end();
-  buildInProgress_ = false;
+  build_->out.close();
+  LOG_DBG("VSC", "Cached %u vertical pages", pageCount);
+  build_.reset();
+  partial_ = false;
+  return true;
+}
 
-  LOG_DBG("VSC", "Cached %u vertical pages (streamed)", pageCount);
+void VerticalSection::abandonBuild() {
+  if (!build_) return;
+  build_->out.close();
+  Storage.remove(filePath.c_str());
+  pageOffsets_.clear();
+  pageCount = 0;
+  build_.reset();
+  partial_ = false;
+}
+
+void VerticalSection::suspendBuild() {
+  if (!build_) return;
+  // Write whatever we have so far as a partial cache
+  if (pageOffsets_.size() >= 1) {
+    finalizeVerticalCache(build_->out, pageOffsets_, pageCount);
+  }
+  build_->out.close();
+  build_.reset();
+  // partial_ stays true — loadSectionFile will recognise the partial file
+  // by its version sentinel and loadPage will serve the cached pages.
+}
+
+bool VerticalSection::createSectionFile(const int fontId, const uint16_t viewportWidth,
+                                         const uint16_t viewportHeight) {
+  GfxRenderer::FrameBufferLoan loan(renderer);
+  if (!startBuild(fontId, viewportWidth, viewportHeight)) return false;
+  if (!buildSomeMore(0)) return false;
   return true;
 }
 

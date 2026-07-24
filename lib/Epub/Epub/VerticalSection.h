@@ -46,9 +46,20 @@ class VerticalSection {
   // made it to disk are readable (this session keeps working).
   bool lastBuildDroppedForHeap_ = false;
 
-  // True while createSectionFile() is actively building. Used by EpubReaderActivity::loop()
-  // to gate background work (idle prewarm, partial rebuild).
-  bool buildInProgress_ = false;
+  // Build state held while incremental build (startBuild / buildSomeMore) is running.
+  struct BuildState {
+    HalFile out;
+    std::vector<uint32_t> pageOffsets;
+    int fontId = 0;
+    uint16_t viewportWidth = 0;
+    uint16_t viewportHeight = 0;
+    bool failed = false;
+  };
+  std::unique_ptr<BuildState> build_;
+
+  // True while the build has written at least one page but hasn't finalized yet.
+  // loadSectionFile sets this for cached partial files.
+  bool partial_ = false;
 
   // Set before streamParseAndLayout to disable heavy optimisations when the
   // heap is too tight for large reserves but still above the hard-fail floor.
@@ -70,15 +81,13 @@ class VerticalSection {
   const VerticalPage* getPage() const;
   const VerticalPage* getPage(int pageIndex) const;
 
-  // Build lifecycle stubs (1.5-compatible).
-  bool isBuilding() const { return buildInProgress_; }
-  bool isBuildComplete() const { return !buildInProgress_; }
-  // VerticalSection always builds atomically; no partial/suspend support yet.
-  bool isPartial() const { return false; }
-  void suspendBuild() {}
-  void abandonBuild() {}
-  // Best estimate equals pageCount (synchronous build means we already know).
-  uint16_t estimatedTotalPages() const { return pageCount; }
-  // No-op: createSectionFile builds atomically.
-  bool canSkipBuild() const { return false; }
+  // Incremental build lifecycle (1.5-compatible).
+  bool startBuild(int fontId, uint16_t viewportWidth, uint16_t viewportHeight);
+  bool buildSomeMore(int maxPages);
+  bool isBuilding() const { return build_ != nullptr; }
+  bool isBuildComplete() const { return build_ == nullptr; }
+  bool isPartial() const { return partial_; }
+  void suspendBuild();
+  void abandonBuild();
+  uint16_t estimatedTotalPages() const { return pageCount > 0 ? pageCount : 1; }
 };

@@ -1112,14 +1112,30 @@ void EpubReaderActivity::render(RenderLock&& lock) {
 
     if (wantVertical) {
       verticalSection_ = std::make_unique<VerticalSection>(epub, currentSpineIndex, renderer);
-      if (!verticalSection_->loadSectionFile(SETTINGS.getReaderFontId(), viewportWidth, viewportHeight)) {
-        LOG_DBG("ERS", "Vertical cache not found, building...");
+      const int fontId = SETTINGS.getReaderFontId();
+      const bool cacheLoaded = verticalSection_->loadSectionFile(fontId, viewportWidth, viewportHeight);
+      const bool cacheComplete = cacheLoaded && !verticalSection_->isPartial();
+      if (!cacheComplete) {
+        LOG_DBG("ERS", cacheLoaded ? "Partial vertical cache found, resuming build..." :
+                                     "Vertical cache not found, building...");
         GUI.drawPopup(renderer, tr(STR_INDEXING));
-        if (!verticalSection_->createSectionFile(SETTINGS.getReaderFontId(), viewportWidth, viewportHeight)) {
-          LOG_ERR("ERS", "Failed to persist vertical page data to SD");
+        bool started = verticalSection_->startBuild(fontId, viewportWidth, viewportHeight);
+        if (!started) {
+          LOG_ERR("ERS", "Failed to start vertical section build");
           verticalSection_.reset();
           showBuildError();
           return;
+        }
+        const int target = pendingPageJump.has_value() ? *pendingPageJump
+                                                       : (nextPageNumber < 0 ? 0 : nextPageNumber);
+        while (!verticalSection_->isBuildComplete() &&
+               static_cast<int>(verticalSection_->pageCount) <= target) {
+          if (!verticalSection_->buildSomeMore(1)) {
+            LOG_ERR("ERS", "Failed during incremental vertical section build");
+            verticalSection_.reset();
+            showBuildError();
+            return;
+          }
         }
       } else {
         LOG_DBG("ERS", "Vertical cache found, skipping build...");
@@ -1979,11 +1995,15 @@ void EpubReaderActivity::silentIndexNextChapterIfNeeded(const uint16_t viewportW
 
   if (isVerticalActive()) {
     VerticalSection nextVSec(epub, nextSpineIndex, renderer);
-    if (nextVSec.loadSectionFile(SETTINGS.getReaderFontId(), viewportWidth, viewportHeight)) {
+    const int fontId = SETTINGS.getReaderFontId();
+    if (nextVSec.loadSectionFile(fontId, viewportWidth, viewportHeight) && !nextVSec.isPartial()) {
       return;
     }
     LOG_DBG("ERS", "Silently indexing next chapter (vertical): %d", nextSpineIndex);
-    nextVSec.createSectionFile(SETTINGS.getReaderFontId(), viewportWidth, viewportHeight);
+    if (!nextVSec.isBuilding()) {
+      if (!nextVSec.startBuild(fontId, viewportWidth, viewportHeight)) return;
+    }
+    nextVSec.buildSomeMore(BACKGROUND_BUILD_PAGES_PER_TICK);
   } else {
     Section nextSection(epub, nextSpineIndex, renderer);
     const ReaderRenderSpec buildSpec = SETTINGS.readerRenderSpec(viewportWidth, viewportHeight);

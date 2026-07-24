@@ -1328,7 +1328,14 @@ int SdCardFont::buildAdvanceTableRange(Iter begin, Iter end, bool includeSpace, 
   // +2 reserved slots for space and hyphen injected after the main scan.
   // Try the full-size buffer first, then fall back through smaller sizes so a
   // tight-heap situation still makes progress (slower, but doesn't fail outright).
-  uint32_t codepointCapacity = 4096;
+  // Start conservatively on low heap to avoid wasting a try on a 16 KB
+  // allocation that will fail and fragment the heap anyway.
+  const uint32_t allocBudget = ESP.getMaxAllocHeap();
+  uint32_t codepointCapacity =
+      (allocBudget >= 96 * 1024) ? 4096 :
+      (allocBudget >= 64 * 1024) ? 1024 :
+      (allocBudget >= 40 * 1024) ? 512  :
+                                   256;
   uint32_t* codepoints = nullptr;
   while (codepointCapacity >= 64) {
     codepoints = new (std::nothrow) uint32_t[codepointCapacity + 2];
