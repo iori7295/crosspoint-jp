@@ -141,6 +141,9 @@ class GfxRenderer {
   void ensureSdCardFontReady(int fontId, const char* utf8Text, uint8_t styleMask = 0x0F) const;
   void ensureSdCardFontReady(int fontId, const std::vector<std::string>& words, bool includeHyphen,
                              uint8_t styleMask = 0x0F) const;
+  /// Preload glyph bitmaps for text. Called before vertical rendering
+  /// to avoid SD-card I/O stalls during page draw. Safe to call on non-SD fonts (no-op).
+  void ensureSdCardFontGlyphsReady(int fontId, const char* utf8Text, uint8_t styleMask = 0x0F) const;
 
   // Orientation control (affects logical width/height and coordinate transforms)
   void setOrientation(const Orientation o) { orientation = o; }
@@ -259,6 +262,10 @@ class GfxRenderer {
   // Helper for drawing rotated text (90 degrees clockwise, for side buttons)
   void drawTextRotated90CW(int fontId, int x, int y, const char* text, bool black = true,
                            EpdFontFamily::Style style = EpdFontFamily::REGULAR) const;
+  // Helper for drawing rotated text 90 degrees counter-clockwise (for vertical
+  // Japanese text where glyphs are rotated in-cell)
+  void drawTextRotated90CCW(int fontId, int x, int y, const char* text, bool black = true,
+                            EpdFontFamily::Style style = EpdFontFamily::REGULAR) const;
   int getTextHeight(int fontId) const;
 
   // Grayscale functions
@@ -289,6 +296,13 @@ class GfxRenderer {
 
   // Font helpers
   const uint8_t* getGlyphBitmap(const EpdFontData* fontData, const EpdGlyph* glyph) const;
+  /// Returns glyph metrics for a codepoint in a font+style, walking the fallback
+  /// chain. Returns false if the glyph cannot be resolved at all.
+  bool getGlyphMetrics(int fontId, uint32_t cp, EpdFontFamily::Style style, int* left, int* width, int* top,
+                       int* height) const;
+  /// Returns the font ID of the global fallback (SD card font) registered via
+  /// EpdFontFamily, or 0 if none.
+  int getFallbackFontId() const;
 
   // Lend the 48 KB framebuffer's bytes to a memory-hungry phase (chapter
   // builds) WITHOUT freeing the allocation, so it never moves and repeated
