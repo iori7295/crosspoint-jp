@@ -50,6 +50,10 @@ class VerticalSection {
   // to gate background work (idle prewarm, partial rebuild).
   bool buildInProgress_ = false;
 
+  // Set before streamParseAndLayout to disable heavy optimisations when the
+  // heap is too tight for large reserves but still above the hard-fail floor.
+  bool lowMemMode_ = false;
+
  public:
   uint16_t pageCount = 0;
   int currentPage = 0;

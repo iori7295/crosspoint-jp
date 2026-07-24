@@ -902,13 +902,24 @@ bool VerticalSection::streamParseAndLayout(HalFile& out, const int fontId, const
   LOG_INF("VSC", "streamParseAndLayout start spine=%d free=%u maxAlloc=%u", spineIndex, ESP.getFreeHeap(),
           ESP.getMaxAllocHeap());
   const auto localPath = epub->getSpineItem(spineIndex).href;
-  // The zip inflate needs a contiguous 32KB window. If maxAlloc can't provide that,
-  // any attempt would abort in operator new -- skip early so the caller sees a clean
-  // false return and the chapter builds on-demand (where the heap may be healthier).
-  if (ESP.getMaxAllocHeap() < 40000) {
-    LOG_ERR("VSC", "Insufficient heap for chapter build (maxAlloc=%u < 40K), deferring", ESP.getMaxAllocHeap());
+  // Degraded mode: when maxAlloc is between 24KB and 40KB the chapter can still
+  // build but heavy optimisations (page glyph cache, large reserves, agressive
+  // prewarm) are disabled.  Below 24KB there isn't enough contiguous memory for
+  // the zip inflate window (32KB) so we fail early.  This was a hard 40KB gate
+  // before, which rejected even short /title.html chapters on a mildly
+  // fragmented heap -- see the stabilize-list hotfix.
+  const uint32_t maxAlloc = ESP.getMaxAllocHeap();
+  constexpr uint32_t kHardFailBytes = 24 * 1024;
+  constexpr uint32_t kLowMemBytes  = 40 * 1024;
+  if (maxAlloc < kHardFailBytes) {
+    LOG_ERR("VSC", "Insufficient heap (maxAlloc=%u < %u), deferring", maxAlloc, kHardFailBytes);
     return false;
   }
+  const bool lowMemMode = maxAlloc < kLowMemBytes;
+  if (lowMemMode) {
+    LOG_DBG("VSC", "Low-memory vertical build (maxAlloc=%u < %u), degraded mode", maxAlloc, kLowMemBytes);
+  }
+  lowMemMode_ = lowMemMode;
 
   const auto tmpHtmlPath = epub->getCachePath() + "/.tmp_v" + std::to_string(spineIndex) + ".html";
 
@@ -976,7 +987,9 @@ bool VerticalSection::streamParseAndLayout(HalFile& out, const int fontId, const
   extractor.currentRuns.reserve(TextExtractor::SOFT_FLUSH_RUNS + 8);
   extractor.rubyBase.reserve(TextExtractor::RUBY_RESERVE_HINT);
   extractor.rubyAnnotation.reserve(TextExtractor::RUBY_RESERVE_HINT);
-  pageOffsets_.reserve(640);  // 2.5KB; a 240KB chapter yields ~500 pages
+  if (!lowMemMode_) {
+    pageOffsets_.reserve(640);  // 2.5KB; a 240KB chapter yields ~500 pages
+  }
 
   XML_Parser parser = XML_ParserCreate(nullptr);
   if (!parser) {

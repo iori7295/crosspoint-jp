@@ -1967,8 +1967,8 @@ void EpubReaderActivity::silentIndexNextChapterIfNeeded(const uint16_t viewportW
     return;
   }
 
-  if (ESP.getMaxAllocHeap() < 40000) {
-    LOG_DBG("ERS", "Skipping silent index: maxAlloc=%u < 40K threshold", ESP.getMaxAllocHeap());
+  if (ESP.getMaxAllocHeap() < 24000) {
+    LOG_DBG("ERS", "Skipping silent index: maxAlloc=%u < 24K threshold", ESP.getMaxAllocHeap());
     return;
   }
 

@@ -241,8 +241,11 @@ void Epub::parseCssFiles() const {
   // Maximum CSS file size we'll attempt to parse (uncompressed)
   // Larger files risk memory exhaustion on ESP32
   constexpr size_t MAX_CSS_FILE_SIZE = 128 * 1024;  // 128KB
-  // Minimum heap required before attempting CSS parsing
-  constexpr size_t MIN_HEAP_FOR_CSS_PARSING = 64 * 1024;  // 64KB
+  // Minimum heap required before attempting CSS parsing.  Was 64 KB before
+  // the stabilize-list hotfix -- too aggressive for a typical ~5 KB stylesheet
+  // on a moderately fragmented heap.  32 KB is a reasonable floor; below that
+  // the zip inflate window alone is risky, so skipping CSS is safer.
+  constexpr size_t MIN_HEAP_FOR_CSS_PARSING = 32 * 1024;  // 32KB
 
   if (cssFiles.empty()) {
     LOG_DBG("EBP", "No CSS files to parse, but CssParser created for inline styles");

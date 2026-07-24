@@ -1,5 +1,6 @@
 #include "ReaderActivity.h"
 
+#include <FontCacheManager.h>
 #include <FsHelpers.h>
 #include <HalStorage.h>
 #include <I18n.h>
@@ -135,6 +136,13 @@ void ReaderActivity::onEnter() {
   if (initialBookPath.empty()) {
     goToLibrary();  // Start from root when entering via Browse
     return;
+  }
+
+  // Clear any font glyph cache left by Home/FileBrowser prewarm before the
+  // heavy EPUB load (CSS parse, chapter indexing) starts.  The prewarm data
+  // would otherwise compete with the build heap, causing OOM at ~32KB free.
+  if (auto* fcm = renderer.getFontCacheManager()) {
+    fcm->clearCache();
   }
 
   sdFontSystem.ensureLoaded(renderer);
