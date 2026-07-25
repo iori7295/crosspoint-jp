@@ -38,7 +38,20 @@ class FileBrowserActivity final : public Activity {
   void loadFiles();
   size_t findEntry(const std::string& name) const;
 
-  void warmVisibleEntries();
+  struct WarmKey {
+    std::string basepath;
+    int firstVisible = -1;
+    int lastVisible = -1;
+    int fontId = 0;
+    uint8_t styleMask = 0;
+    bool operator==(const WarmKey& o) const {
+      return basepath == o.basepath && firstVisible == o.firstVisible && lastVisible == o.lastVisible &&
+             fontId == o.fontId && styleMask == o.styleMask;
+    }
+    bool operator!=(const WarmKey& o) const { return !(*this == o); }
+  };
+  WarmKey lastWarmKey_;
+  void warmVisibleEntries(int firstVisible, int lastVisible, const std::string& pathLabel);
 
  public:
   explicit FileBrowserActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::string initialPath = "/",

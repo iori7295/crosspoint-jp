@@ -381,33 +381,39 @@ std::string getFileExtension(const std::string& filename) {
   return filename.substr(pos);
 }
 
-void FileBrowserActivity::warmVisibleEntries() {
-  // FileBrowser draws list items with UI_10_FONT_ID.  CJK codepoints are
-  // redirected by resolveTextFontId() → fallbackFontMap_ → SD card font ID
-  // (e.g. NotoSansCJKjp_10).  Warming UI_10_FONT_ID is a no-op because it
-  // is not in sdCardFonts_.  We must warm the actual SD card fonts directly.
-  // Bitmap prewarm is skipped for lists (the 16-slot overflow ring is enough
-  // for ~12 visible rows); advance-table warming alone eliminates column
-  // measurement stalls.
-  constexpr uint8_t kStyleMask = 0x03;
-  const int visMargin = 20;
-  const int firstVis = std::max(0, static_cast<int>(selectorIndex) - visMargin);
-  const int lastVis = std::min(static_cast<int>(files.size()) - 1, static_cast<int>(selectorIndex) + visMargin);
-  if (firstVis > lastVis) return;
+void FileBrowserActivity::warmVisibleEntries(int firstVisible, int lastVisible, const std::string& pathLabel) {
+  if (firstVisible > lastVisible || static_cast<size_t>(lastVisible) >= files.size()) return;
 
-  std::vector<std::string> words;
-  words.reserve(static_cast<size_t>(lastVis - firstVis + 1));
-  for (int i = firstVis; i <= lastVis; ++i) {
-    words.push_back(getFileName(files[static_cast<size_t>(i)]));
-  }
+  // File list labels are rendered with UI fonts; Japanese falls back to the
+  // global SD-card fallback font.  Warm THAT font, not the reader body font.
+  const int fallbackFontId = renderer.getFallbackFontId();
+  if (fallbackFontId == 0) return;
 
-  for (const auto& [fontId, _] : renderer.getSdCardFonts()) {
-    renderer.ensureSdCardFontReady(fontId, words, false, kStyleMask);
+  constexpr uint8_t kStyleMask = 0x01;  // list labels are effectively regular
+  const WarmKey key{basepath, firstVisible, lastVisible, fallbackFontId, kStyleMask};
+  if (key == lastWarmKey_) return;
+  lastWarmKey_ = key;
+
+  std::string utf8;
+  utf8.reserve(512);
+
+  // Warm current path too: width measurement/truncation can otherwise trigger
+  // on-demand fallback loads before the list even draws.
+  if (!pathLabel.empty()) { utf8 += pathLabel; utf8 += '\n'; }
+
+  for (int i = firstVisible; i <= lastVisible; ++i) {
+    utf8 += getFileName(files[i]);
+    utf8 += '\n';
   }
+  if (utf8.empty()) return;
+
+  // Keep FileBrowser cheap: visible page only, fallback font only.
+  // advance + glyph bitmap both warmed so the list draws without overflow.
+  renderer.ensureSdCardFontReady(fallbackFontId, utf8.c_str(), kStyleMask);
+  renderer.ensureSdCardFontGlyphsReady(fallbackFontId, utf8.c_str(), kStyleMask);
 }
 
 void FileBrowserActivity::render(RenderLock&&) {
-  warmVisibleEntries();
   renderer.clearScreen();
 
   const auto pageWidth = renderer.getScreenWidth();
@@ -425,6 +431,11 @@ void FileBrowserActivity::render(RenderLock&&) {
   const int contentTop = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing;
   const int contentHeight =
       pageHeight - contentTop - metrics.buttonHintsHeight - metrics.verticalSpacing - pathReserved;
+  const int pageItems = UITheme::getNumberOfItemsPerPage(renderer, true, false, true, false, pathReserved);
+  const int firstVisible = (static_cast<int>(selectorIndex) / pageItems) * pageItems;
+  const int lastVisible = std::min<int>(static_cast<int>(files.size()) - 1, firstVisible + pageItems - 1);
+  std::string shownPath = basepath.empty() ? "/" : basepath;
+  warmVisibleEntries(firstVisible, lastVisible, shownPath);
   if (files.empty()) {
     const char* emptyMsg = (mode == Mode::PickFirmware) ? tr(STR_NO_BIN_FILES) : tr(STR_NO_FILES_FOUND);
     renderer.drawText(UI_10_FONT_ID, metrics.contentSidePadding, contentTop + 20, emptyMsg);
