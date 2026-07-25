@@ -51,6 +51,7 @@ class FileBrowserActivity final : public Activity {
     bool operator!=(const WarmKey& o) const { return !(*this == o); }
   };
   WarmKey lastWarmKey_;
+  int resolveListFallbackFontId() const;
   void warmVisibleEntries(int firstVisible, int lastVisible, const std::string& pathLabel);
 
  public:

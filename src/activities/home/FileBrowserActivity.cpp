@@ -381,36 +381,36 @@ std::string getFileExtension(const std::string& filename) {
   return filename.substr(pos);
 }
 
+int FileBrowserActivity::resolveListFallbackFontId() const {
+  int id = renderer.getFallbackFontId();
+  if (id != 0) return id;
+  const auto& sdFonts = renderer.getSdCardFonts();
+  if (sdFonts.empty()) return 0;
+  return sdFonts.begin()->first;
+}
+
 void FileBrowserActivity::warmVisibleEntries(int firstVisible, int lastVisible, const std::string& pathLabel) {
   if (firstVisible > lastVisible || static_cast<size_t>(lastVisible) >= files.size()) return;
 
-  // File list labels are rendered with UI fonts; Japanese falls back to the
-  // global SD-card fallback font.  Warm THAT font, not the reader body font.
-  const int fallbackFontId = renderer.getFallbackFontId();
-  if (fallbackFontId == 0) return;
+  const int fontId = resolveListFallbackFontId();
+  if (fontId == 0) return;
 
-  constexpr uint8_t kStyleMask = 0x01;  // list labels are effectively regular
-  const WarmKey key{basepath, firstVisible, lastVisible, fallbackFontId, kStyleMask};
+  constexpr uint8_t kStyleMask = 0x01;
+  const WarmKey key{basepath, firstVisible, lastVisible, fontId, kStyleMask};
   if (key == lastWarmKey_) return;
   lastWarmKey_ = key;
 
   std::string utf8;
   utf8.reserve(512);
-
-  // Warm current path too: width measurement/truncation can otherwise trigger
-  // on-demand fallback loads before the list even draws.
   if (!pathLabel.empty()) { utf8 += pathLabel; utf8 += '\n'; }
-
   for (int i = firstVisible; i <= lastVisible; ++i) {
     utf8 += getFileName(files[i]);
     utf8 += '\n';
   }
   if (utf8.empty()) return;
 
-  // Keep FileBrowser cheap: visible page only, fallback font only.
-  // advance + glyph bitmap both warmed so the list draws without overflow.
-  renderer.ensureSdCardFontReady(fallbackFontId, utf8.c_str(), kStyleMask);
-  renderer.ensureSdCardFontGlyphsReady(fallbackFontId, utf8.c_str(), kStyleMask);
+  renderer.ensureSdCardFontReady(fontId, utf8.c_str(), kStyleMask);
+  renderer.ensureSdCardFontGlyphsReady(fontId, utf8.c_str(), kStyleMask);
 }
 
 void FileBrowserActivity::render(RenderLock&&) {
