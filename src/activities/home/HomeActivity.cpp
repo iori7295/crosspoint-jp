@@ -117,18 +117,24 @@ void HomeActivity::onEnter() {
   const auto& metrics = UITheme::getInstance().getMetrics();
   loadRecentBooks(metrics.homeRecentBooksCount);
 
-  // Prewarm SD card font with recent book titles so CJK glyphs load
-  // before the rendering pass measures/draws them, avoiding one-by-one
-  // SD reads at render time.  The theme draws titles in UI_12_FONT_ID
-  // (bold) and authors in UI_10_FONT_ID (regular), not the reader font.
-  if (auto* fcm = renderer.getFontCacheManager()) {
-    constexpr uint8_t kStyleMask = 0x03;
+  // Prewarm SD card fonts directly (not the built-in UI font IDs, which are
+  // not in sdCardFonts_ and would be a no-op).  The theme draws titles via
+  // UI_12_FONT_ID and authors via UI_10_FONT_ID; resolveTextFontId redirects
+  // CJK codepoints to size-matched SD fallback fonts.  Warming all loaded SD
+  // sizes (8/10/12/14 pt) covers every UI font size in one pass.
+  {
+    std::string joined;
     for (const auto& book : recentBooks) {
-      if (!book.title.empty()) {
-        fcm->prewarmCache(UI_12_FONT_ID, book.title.c_str(), kStyleMask);
-      }
-      if (!book.author.empty()) {
-        fcm->prewarmCache(UI_10_FONT_ID, book.author.c_str(), kStyleMask);
+      if (!book.title.empty()) { joined += book.title; joined += '\n'; }
+      if (!book.author.empty()) { joined += book.author; joined += '\n'; }
+    }
+    if (!joined.empty()) {
+      constexpr uint8_t kStyleMask = 0x03;
+      for (const auto& [fontId, _] : renderer.getSdCardFonts()) {
+        renderer.ensureSdCardFontReady(fontId, joined.c_str(), kStyleMask);
+        if (auto* fcm = renderer.getFontCacheManager()) {
+          fcm->prewarmCache(fontId, joined.c_str(), kStyleMask);
+        }
       }
     }
   }

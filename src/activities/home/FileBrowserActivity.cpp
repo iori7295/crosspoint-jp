@@ -382,30 +382,27 @@ std::string getFileExtension(const std::string& filename) {
 }
 
 void FileBrowserActivity::warmVisibleEntries() {
-  // FileBrowser draws list items with UI_10_FONT_ID and the path bar with
-  // SMALL_FONT_ID (see LyraTheme::drawList / FileBrowserActivity::render).
-  // Warming the reader font (SETTINGS.getReaderFontId()) is useless here:
-  // the SD font mini cache is per-fontId, so warming one font doesn't help
-  // the other (the fix for the 25-second list freeze).  Warm both UI fonts.
-  constexpr int kFontIds[] = {UI_10_FONT_ID, SMALL_FONT_ID};
+  // FileBrowser draws list items with UI_10_FONT_ID.  CJK codepoints are
+  // redirected by resolveTextFontId() → fallbackFontMap_ → SD card font ID
+  // (e.g. NotoSansCJKjp_10).  Warming UI_10_FONT_ID is a no-op because it
+  // is not in sdCardFonts_.  We must warm the actual SD card fonts directly.
+  // Bitmap prewarm is skipped for lists (the 16-slot overflow ring is enough
+  // for ~12 visible rows); advance-table warming alone eliminates column
+  // measurement stalls.
   constexpr uint8_t kStyleMask = 0x03;
+  const int visMargin = 20;
+  const int firstVis = std::max(0, static_cast<int>(selectorIndex) - visMargin);
+  const int lastVis = std::min(static_cast<int>(files.size()) - 1, static_cast<int>(selectorIndex) + visMargin);
+  if (firstVis > lastVis) return;
 
   std::vector<std::string> words;
-  words.reserve(files.size());
-  std::string joined;
-  for (size_t i = 0; i < files.size(); ++i) {
-    const auto label = getFileName(files[i]);
-    words.push_back(label);
-    joined += label;
-    joined += '\n';
+  words.reserve(static_cast<size_t>(lastVis - firstVis + 1));
+  for (int i = firstVis; i <= lastVis; ++i) {
+    words.push_back(getFileName(files[static_cast<size_t>(i)]));
   }
-  if (words.empty()) return;
 
-  for (const int fontId : kFontIds) {
+  for (const auto& [fontId, _] : renderer.getSdCardFonts()) {
     renderer.ensureSdCardFontReady(fontId, words, false, kStyleMask);
-    if (auto* fcm = renderer.getFontCacheManager()) {
-      fcm->prewarmCache(fontId, joined.c_str(), kStyleMask);
-    }
   }
 }
 

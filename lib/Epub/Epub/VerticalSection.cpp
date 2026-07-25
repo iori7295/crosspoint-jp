@@ -1072,9 +1072,27 @@ static bool finalizeVerticalCache(HalFile& file, const std::vector<uint32_t>& pa
   return true;
 }
 
+// Extract the chapter's HTML from the EPUB zip to a temp file.
+// Returns true if the file was written (or already exists).
+static bool extractChapterHtml(Epub& epub, int spineIndex, const std::string& tmpHtmlPath) {
+  // Reuse an already-extracted file (from a partial previuos build).
+  if (Storage.exists(tmpHtmlPath.c_str())) return true;
+  bool success = false;
+  const auto localPath = epub.getSpineItem(spineIndex).href;
+  for (int attempt = 0; attempt < 3 && !success; attempt++) {
+    if (attempt > 0) delay(50);
+    if (Storage.exists(tmpHtmlPath.c_str())) Storage.remove(tmpHtmlPath.c_str());
+    HalFile tmpHtml;
+    if (!Storage.openFileForWrite("VSC", tmpHtmlPath, tmpHtml)) continue;
+    success = epub.readItemContentsToStream(localPath, tmpHtml, 2048);
+    tmpHtml.close();
+    if (!success && Storage.exists(tmpHtmlPath.c_str())) Storage.remove(tmpHtmlPath.c_str());
+  }
+  return success;
+}
+
 bool VerticalSection::startBuild(const int fontId, const uint16_t viewportWidth,
                                   const uint16_t viewportHeight) {
-  GfxRenderer::FrameBufferLoan loan(renderer);
   const auto vsectionsDir = epub->getCachePath() + "/vsections";
   Storage.mkdir(vsectionsDir.c_str());
 
@@ -1082,6 +1100,13 @@ bool VerticalSection::startBuild(const int fontId, const uint16_t viewportWidth,
   bs->fontId = fontId;
   bs->viewportWidth = viewportWidth;
   bs->viewportHeight = viewportHeight;
+  bs->htmlPath = epub->getCachePath() + "/.tmp_v" + std::to_string(spineIndex) + ".html";
+
+  // Extract HTML to temp file ONCE (reused across buildSomeMore calls).
+  if (!extractChapterHtml(*epub, spineIndex, bs->htmlPath)) {
+    return false;
+  }
+
   if (!Storage.openFileForWrite("VSC", filePath, bs->out)) {
     return false;
   }
@@ -1095,11 +1120,6 @@ bool VerticalSection::startBuild(const int fontId, const uint16_t viewportWidth,
   serialization::writePod(bs->out, pageCountPlaceholder);
   serialization::writePod(bs->out, indexOffsetPlaceholder);
 
-  // For now the whole chapter is still laid out synchronously inside
-  // buildSomeMore — true incremental build (paragraph/run chunking) is
-  // planned as follow-up work.  The move to startBuild/buildSomeMore
-  // already lets EpubReaderActivity use the same code path for vertical
-  // and horizontal section loading.
   build_ = std::move(bs);
   partial_ = false;
   pageOffsets_.clear();
@@ -1108,13 +1128,17 @@ bool VerticalSection::startBuild(const int fontId, const uint16_t viewportWidth,
   return true;
 }
 
-bool VerticalSection::buildSomeMore(int /*maxPages*/) {
+bool VerticalSection::buildSomeMore(int maxPages) {
   if (!build_) return true;  // already complete
 
-  // The real heavy work (HTML inflate, XML parse, layout, glyph cache write)
-  // happens here, NOT in startBuild().  The 48 KB framebuffer loan must
-  // cover this scope.
   GfxRenderer::FrameBufferLoan loan(renderer);
+
+  // streamParseAndLayout reads from the pre-extracted HTML (saved by
+  // startBuild) instead of re-extracting from the EPUB zip each time.
+  // It still does a full parse of the HTML every call — true paragraph-
+  // level chunking (saving/resuming Expat state) is follow-up work.
+  // The HTML temp file is reused across buildSomeMore calls via the
+  // existing tmp html path logic inside streamParseAndLayout.
 
   const bool ok = streamParseAndLayout(build_->out, build_->fontId, build_->viewportWidth,
                                         build_->viewportHeight);
@@ -1126,19 +1150,20 @@ bool VerticalSection::buildSomeMore(int /*maxPages*/) {
     return false;
   }
 
-  // Check for heap-failure abort (glyphs dropped despite forced page breaks)
   if (lastBuildDroppedForHeap_) {
     LOG_ERR("VSC", "Build dropped glyphs; discarding cache for spine %d", spineIndex);
     abandonBuild();
     return false;
   }
 
-  // Finalize: write offset index and patch header
+  // Finalize cache
   if (!finalizeVerticalCache(build_->out, pageOffsets_, pageCount)) {
     abandonBuild();
     return false;
   }
   build_->out.close();
+  // Clean up the temp HTML file
+  Storage.remove(build_->htmlPath.c_str());
   LOG_DBG("VSC", "Cached %u vertical pages", pageCount);
   build_.reset();
   partial_ = false;
@@ -1148,6 +1173,7 @@ bool VerticalSection::buildSomeMore(int /*maxPages*/) {
 void VerticalSection::abandonBuild() {
   if (!build_) return;
   build_->out.close();
+  if (!build_->htmlPath.empty()) Storage.remove(build_->htmlPath.c_str());
   Storage.remove(filePath.c_str());
   pageOffsets_.clear();
   pageCount = 0;
@@ -1167,6 +1193,7 @@ void VerticalSection::suspendBuild() {
     return;
   }
   build_->out.close();
+  // Keep the temp HTML file for resume.
   build_.reset();
   partial_ = true;
 }

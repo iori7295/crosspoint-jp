@@ -48,7 +48,8 @@ class VerticalSection {
 
   // Build state held while incremental build (startBuild / buildSomeMore) is running.
   struct BuildState {
-    HalFile out;
+    HalFile out;             // output .bin (vsection cache)
+    std::string htmlPath;    // pre-extracted HTML temp file path
     std::vector<uint32_t> pageOffsets;
     int fontId = 0;
     uint16_t viewportWidth = 0;
