@@ -382,8 +382,13 @@ std::string getFileExtension(const std::string& filename) {
 }
 
 int FileBrowserActivity::resolveListFallbackFontId() const {
-  int id = renderer.getFallbackFontId();
+  // FileBrowser draws list items with UI_10_FONT_ID.  CJK codepoints are
+  // redirected by resolveTextFontId() which checks fallbackFontMap_ for
+  // the size-matched SD fallback (e.g. UI_10_FONT_ID → NotoSansCJKjp_10).
+  // Use THAT font ID, not the reader body font (14pt) nor global fallback.
+  int id = renderer.getUiFallbackFontId(UI_10_FONT_ID);
   if (id != 0) return id;
+  // Fallback not registered yet — use the first loaded SD font.
   const auto& sdFonts = renderer.getSdCardFonts();
   if (sdFonts.empty()) return 0;
   return sdFonts.begin()->first;
