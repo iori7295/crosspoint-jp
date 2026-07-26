@@ -1113,20 +1113,30 @@ void EpubReaderActivity::render(RenderLock&& lock) {
     if (wantVertical) {
       verticalSection_ = std::make_unique<VerticalSection>(epub, currentSpineIndex, renderer);
       const int fontId = SETTINGS.getReaderFontId();
-      if (!verticalSection_->loadSectionFile(fontId, viewportWidth, viewportHeight)) {
+      const bool cacheLoaded = verticalSection_->loadSectionFile(fontId, viewportWidth, viewportHeight);
+      if (!cacheLoaded) {
         LOG_DBG("ERS", "Vertical cache not found, building...");
         GUI.drawPopup(renderer, tr(STR_INDEXING));
-        if (!verticalSection_->createSectionFile(fontId, viewportWidth, viewportHeight)) {
-          LOG_ERR("ERS", "Failed to persist vertical page data to SD");
+        // Incremental build: build the first page, then background-build the rest.
+        if (!verticalSection_->startBuild(fontId, viewportWidth, viewportHeight)) {
+          LOG_ERR("ERS", "Failed to start vertical section build");
           verticalSection_.reset();
           showBuildError();
           return;
         }
+        while (!verticalSection_->isBuildComplete() && verticalSection_->pageCount == 0) {
+          if (!verticalSection_->buildSomeMore(1)) {
+            LOG_ERR("ERS", "Failed during vertical section build");
+            verticalSection_.reset();
+            showBuildError();
+            return;
+          }
+        }
       } else {
         LOG_DBG("ERS", "Vertical cache found, skipping build...");
       }
-      LOG_DBG("ERS", "Vertical section loaded: %d pages, free heap=%u", verticalSection_->pageCount,
-              ESP.getMaxAllocHeap());
+      LOG_DBG("ERS", "Vertical section loaded: %d pages, free heap=%u",
+              verticalSection_->pageCount, ESP.getMaxAllocHeap());
     } else {
       section = std::unique_ptr<Section>(new Section(epub, currentSpineIndex, renderer));
       // Fresh section, fresh chance: a failed lazy extension start in a previous

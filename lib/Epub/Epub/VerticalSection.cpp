@@ -32,7 +32,8 @@ namespace {
 // v52: not a format change -- forces a rebuild of vertical caches that were built while the CSS
 // rule table was still held resident (see Epub::load): its heap fragmentation made the layout's
 // stream reserve fail on long chapters, silently truncating them into sparse pages ON DISK.
-constexpr uint8_t VSECTION_FILE_VERSION = 57;  // v57: rotated Latin runs start 1/2 cell lower; inter-tag whitespace dropped (phantom blank pages)
+constexpr uint8_t VSECTION_FILE_VERSION = 58;  // v58: partial cache flag, incremental build
+static constexpr uint8_t VSECTION_FLAG_PARTIAL = 0x01;
 // 4KB, not 1KB: chapter builds are SD-latency-bound -- the inflate staging write, the
 // staging read-back, and the expat feed each touch the card once per chunk, so quadrupling
 // the chunk quarters the transaction count for ~12KB of transient buffers.
@@ -608,6 +609,8 @@ struct LayoutPageSink final : ParagraphSink {
   const int fontId;
   size_t imgIdx = 0;
   bool failed = false;
+  size_t pagesToSkip = 0;    // skip this many page writes (already built)
+  int pageBudget = 0;        // 0 = unlimited; >0 = max pages this tick
 
   // ~1-2 screens of text per layout batch. A batch boundary lands between paragraphs, which
   // already force a fresh column, so the only observable effect is an occasional page that ends
@@ -815,12 +818,19 @@ struct LayoutPageSink final : ParagraphSink {
   }
 
   void writeOne(const VerticalPage& p) {
+    // Skip pages that were already built in a previous tick.
+    if (pagesToSkip > 0) { pagesToSkip--; return; }
+
     pageOffsets.push_back(static_cast<uint32_t>(out.position()));
-    // Advance-table only (not glyph bitmaps) during build — see warmAdvanceTableForPage.
     warmAdvanceTableForPage(p, fontId);
     if (!writePage(out, p)) {
       LOG_ERR("VSC", "Failed to write page %zu to cache", pageOffsets.size() - 1);
       failed = true;
+      return;
+    }
+    if (pageBudget > 0 && --pageBudget == 0) {
+      LOG_DBG("VSC", "Page budget reached, stopping chunk");
+      failed = true;  // tells the caller to stop (not a real error)
     }
   }
 
@@ -896,8 +906,23 @@ constexpr size_t HEADER_PAGECOUNT_OFFSET = 1 + sizeof(int) + 2 * sizeof(uint16_t
 
 }  // namespace
 
+struct VerticalSection::BuildState {
+  int fontId = 0;
+  uint16_t viewportWidth = 0;
+  uint16_t viewportHeight = 0;
+  HalFile out;
+  std::string htmlPath;
+  std::vector<uint32_t> pageOffsets;
+};
+
+VerticalSection::VerticalSection(const std::shared_ptr<Epub>& epub, int spineIndex, GfxRenderer& renderer)
+    : epub(epub), spineIndex(spineIndex), renderer(renderer),
+      filePath(epub->getCachePath() + "/vsections/" + std::to_string(spineIndex) + ".bin") {}
+VerticalSection::~VerticalSection() = default;
+
 bool VerticalSection::streamParseAndLayout(HalFile& out, const int fontId, const uint16_t viewportWidth,
-                                           const uint16_t viewportHeight) {
+                                            const uint16_t viewportHeight,
+                                            const size_t pagesToSkip, const int pageBudget) {
   // Diagnostic: the "sparse page" investigation found maxAlloc already down at the very first
   // paragraph flush, staying flat for the rest of the chapter -- logging both metrics here checks
   // whether that low contiguous budget is a fresh drop from THIS chapter's own parsing, or whether
@@ -980,6 +1005,8 @@ bool VerticalSection::streamParseAndLayout(HalFile& out, const int fontId, const
 
   LayoutPageSink sink(layout, out, pageOffsets_, *epub, renderer, chapterDir, imageBasePath, viewportWidth,
                       viewportHeight, fontId);
+  sink.pagesToSkip = pagesToSkip;
+  sink.pageBudget = pageBudget;
 
   TextExtractor extractor;
   extractor.sink = &sink;
@@ -1130,19 +1157,15 @@ bool VerticalSection::startBuild(const int fontId, const uint16_t viewportWidth,
 }
 
 bool VerticalSection::buildSomeMore(int maxPages) {
-  if (!build_) return true;  // already complete
+  if (!build_) return true;
 
   GfxRenderer::FrameBufferLoan loan(renderer);
 
-  // streamParseAndLayout reads from the pre-extracted HTML (saved by
-  // startBuild) instead of re-extracting from the EPUB zip each time.
-  // It still does a full parse of the HTML every call — true paragraph-
-  // level chunking (saving/resuming Expat state) is follow-up work.
-  // The HTML temp file is reused across buildSomeMore calls via the
-  // existing tmp html path logic inside streamParseAndLayout.
+  const size_t pagesToSkip = pageOffsets_.size();
+  const int pageBudget = (maxPages > 0) ? maxPages : 0;
 
   const bool ok = streamParseAndLayout(build_->out, build_->fontId, build_->viewportWidth,
-                                        build_->viewportHeight);
+                                        build_->viewportHeight, pagesToSkip, pageBudget);
   loan.end();
 
   if (!ok) {
@@ -1157,17 +1180,31 @@ bool VerticalSection::buildSomeMore(int maxPages) {
     return false;
   }
 
-  // Finalize cache
-  if (!finalizeVerticalCache(build_->out, pageOffsets_, pageCount)) {
-    abandonBuild();
-    return false;
+  // streamParseAndLayout returns true when it processed all HTML content
+  // (not just "no error").  If page budget was set and we didn't consume
+  // all content, we need another tick.
+  const bool reachedEnd = ok;
+
+  if (reachedEnd) {
+    // Full chapter done: finalize.
+    if (!finalizeVerticalCache(build_->out, pageOffsets_, pageCount)) {
+      abandonBuild();
+      return false;
+    }
+    build_->out.close();
+    Storage.remove(build_->htmlPath.c_str());
+    LOG_DBG("VSC", "Cached %u vertical pages (complete)", pageCount);
+    build_.reset();
+    partial_ = false;
+  } else {
+    // Partial progress: save what we have, build stays alive for next tick.
+    const size_t pagesBefore = pageOffsets_.size() - 0; // track for log
+    if (pageOffsets_.size() > 0) {
+      pageCount = static_cast<uint16_t>(pageOffsets_.size());
+      partial_ = true;
+    }
+    LOG_DBG("VSC", "Cached %zu vertical pages (chunk)", pageOffsets_.size());
   }
-  build_->out.close();
-  // Clean up the temp HTML file
-  Storage.remove(build_->htmlPath.c_str());
-  LOG_DBG("VSC", "Cached %u vertical pages", pageCount);
-  build_.reset();
-  partial_ = false;
   return true;
 }
 
@@ -1197,6 +1234,11 @@ void VerticalSection::suspendBuild() {
   // Keep the temp HTML file for resume.
   build_.reset();
   partial_ = true;
+}
+
+uint16_t VerticalSection::estimatedTotalPages() const {
+  if (pageCount > 0) return pageCount;
+  return 1;
 }
 
 bool VerticalSection::createSectionFile(const int fontId, const uint16_t viewportWidth,

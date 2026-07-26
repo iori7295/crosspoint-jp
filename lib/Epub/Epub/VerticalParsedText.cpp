@@ -11,6 +11,29 @@
 #include "Kinsoku.h"
 
 namespace {
+
+// Vertical glyph position tuning.
+static inline bool isVerticalBracket(uint32_t cp) {
+  switch (cp) {
+    case 0x300C: case 0x300D: case 0x300E: case 0x300F:
+    case 0xFF08: case 0xFF09: case 0x3014: case 0x3015:
+    case 0x3010: case 0x3011: return true;
+    default: return false;
+  }
+}
+static inline bool isVerticalCommaPeriod(uint32_t cp) {
+  return cp == 0x3001 || cp == 0x3002 || cp == 0xFF0C || cp == 0xFF0E;
+}
+static inline bool isProlongedSoundMark(uint32_t cp) {
+  return cp == 0x30FC;
+}
+static inline int verticalTuneNudge(int cp, int cellPx) {
+  if (isVerticalCommaPeriod(cp))   return cellPx / 6;
+  if (isVerticalBracket(cp))       return cellPx / 10;
+  if (isProlongedSoundMark(cp))    return cellPx / 12;
+  return 0;
+}
+
 // A reserve() big enough to satisfy this margin should always succeed even under pressure --
 // below it, skip reserving and let the vector grow incrementally (smaller, more-likely-to-succeed
 // allocations) rather than attempt one large upfront allocation that's more likely to fail outright.
@@ -747,10 +770,10 @@ std::vector<VerticalPage> VerticalParsedText::layoutPages(void* ctx, PageReadyCa
       }
     }
     if (Kinsoku::verticalShiftType(pc.codepoint) == 1) {
-      // Comma/period: bottom-left → upper-right of the cell.
       gx += cellPx / 2;
       gy -= cellPx / 2;
     }
+    gy += verticalTuneNudge(pc.codepoint, cellPx);
     g.x = static_cast<uint16_t>(gx);
     g.y = static_cast<uint16_t>(gy);
     g.renderKind = VerticalGlyph::Upright;
@@ -1066,6 +1089,7 @@ std::vector<VerticalPage> VerticalParsedText::layoutPages(void* ctx, PageReadyCa
             gx += cellPx / 2;
             gy -= cellPx / 2;
           }
+          gy += verticalTuneNudge(pc.codepoint, cellPx);
           g.x = static_cast<uint16_t>(gx);
           g.y = static_cast<uint16_t>(gy);
           g.renderKind = VerticalGlyph::Upright;
