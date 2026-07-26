@@ -17,6 +17,11 @@ class EpubReaderActivity final : public Activity {
   std::shared_ptr<Epub> epub;
   std::unique_ptr<Section> section = nullptr;
   std::unique_ptr<VerticalSection> verticalSection_;
+  std::unique_ptr<VerticalSection> bgVerticalSection_;
+  int bgVerticalSpineIndex_ = -1;
+  int bgVerticalFontId_ = 0;
+  uint16_t bgVerticalViewportWidth_ = 0;
+  uint16_t bgVerticalViewportHeight_ = 0;
   int currentSpineIndex = 0;
   int nextPageNumber = 0;
   std::optional<uint16_t> pendingPageJump;
@@ -188,7 +193,9 @@ class EpubReaderActivity final : public Activity {
   // Vertical-text mode helpers
   bool isVerticalActive() const { return verticalSection_ != nullptr; }
   bool hasActiveSection() const { return section != nullptr || verticalSection_ != nullptr; }
+  void flushBackgroundVerticalBuild();
   void resetSection() {
+    flushBackgroundVerticalBuild();
     section.reset();
     verticalSection_.reset();
   }

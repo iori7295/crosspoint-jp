@@ -38,15 +38,11 @@ class VerticalSection {
   bool lowMemMode_ = false;
   bool partial_ = false;
 
-  // Parser / extractor forward-declared; defined in the .cpp.
   struct BuildState;
   std::unique_ptr<BuildState> build_;
 
-  // streamParseAndLayout for the old synchronous code path.
-  // If pagesToSkip > 0 the sink discards that many page writes before actually
-  // writing; if pageBudget > 0 it stops after writing that many new pages.
   bool streamParseAndLayout(HalFile& out, int fontId, uint16_t viewportWidth, uint16_t viewportHeight,
-                            size_t pagesToSkip = 0, int pageBudget = 0);
+                            int pagesToSkip, int pageBudget, bool* hitPageBudget);
 
  public:
   uint16_t pageCount = 0;

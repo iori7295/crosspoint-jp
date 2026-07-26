@@ -150,6 +150,19 @@ void moveFinishedBookToReadFolder(const std::string& srcPath, const std::string&
 
 }  // namespace
 
+void EpubReaderActivity::flushBackgroundVerticalBuild() {
+  if (bgVerticalSection_) {
+    if (bgVerticalSection_->isBuilding()) {
+      bgVerticalSection_->suspendBuild();
+    }
+    bgVerticalSection_.reset();
+  }
+  bgVerticalSpineIndex_ = -1;
+  bgVerticalFontId_ = 0;
+  bgVerticalViewportWidth_ = 0;
+  bgVerticalViewportHeight_ = 0;
+}
+
 void EpubReaderActivity::onEnter() {
   Activity::onEnter();
 
@@ -1989,9 +2002,40 @@ void EpubReaderActivity::silentIndexNextChapterIfNeeded(const uint16_t viewportW
   }
 
   if (isVerticalActive()) {
-    // Vertical next-chapter prebuild disabled until buildSomeMore supports
-    // true incremental chunking.  The current implementation still does a
-    // full-chapter layout per call, competing with interactive performance.
+    const int fontId = SETTINGS.getReaderFontId();
+    if (bgVerticalSection_ && (bgVerticalSpineIndex_ != nextSpineIndex || bgVerticalFontId_ != fontId ||
+                               bgVerticalViewportWidth_ != viewportWidth ||
+                               bgVerticalViewportHeight_ != viewportHeight)) {
+      flushBackgroundVerticalBuild();
+    }
+    if (!bgVerticalSection_) {
+      bgVerticalSection_ = std::make_unique<VerticalSection>(epub, nextSpineIndex, renderer);
+      bgVerticalSpineIndex_ = nextSpineIndex;
+      bgVerticalFontId_ = fontId;
+      bgVerticalViewportWidth_ = viewportWidth;
+      bgVerticalViewportHeight_ = viewportHeight;
+      if (bgVerticalSection_->loadSectionFile(fontId, viewportWidth, viewportHeight) &&
+          !bgVerticalSection_->isPartial()) {
+        flushBackgroundVerticalBuild();
+        return;
+      }
+      if (bgVerticalSection_->isPartial()) {
+        flushBackgroundVerticalBuild();
+        return;
+      }
+      if (!bgVerticalSection_->startBuild(fontId, viewportWidth, viewportHeight)) {
+        flushBackgroundVerticalBuild();
+        return;
+      }
+    }
+    if (!bgVerticalSection_->isBuilding()) return;
+    if (!bgVerticalSection_->buildSomeMore(1)) {
+      bgVerticalSection_->abandonBuild();
+      flushBackgroundVerticalBuild();
+    }
+    if (bgVerticalSection_->isBuildComplete()) {
+      flushBackgroundVerticalBuild();
+    }
     return;
   } else {
     Section nextSection(epub, nextSpineIndex, renderer);
