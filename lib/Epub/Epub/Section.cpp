@@ -270,13 +270,15 @@ bool Section::startBuild(const ReaderRenderSpec& spec, const std::function<void(
     // Retry logic for SD card timing issues
     bool streamed = false;
     uint32_t fileSize = 0;
+    // Adaptive chunk sizes: try smaller on each retry in case the large
+    // chunk itself is what causes the SD write to fail.
+    static constexpr int kChunkSizes[] = {8192, 4096, 2048};
     for (int attempt = 0; attempt < 3 && !streamed; attempt++) {
       if (attempt > 0) {
-        LOG_DBG("SCT", "Retrying stream (attempt %d)...", attempt + 1);
-        delay(50);  // Brief delay before retry
+        LOG_DBG("SCT", "Retrying stream (attempt %d chunk=%d)...", attempt + 1, kChunkSizes[attempt]);
+        delay(50);
       }
 
-      // Remove any incomplete file from previous attempt before retrying
       if (Storage.exists(tmpHtmlPath.c_str())) {
         Storage.remove(tmpHtmlPath.c_str());
       }
@@ -285,18 +287,41 @@ bool Section::startBuild(const ReaderRenderSpec& spec, const std::function<void(
       if (!Storage.openFileForWrite("SCT", tmpHtmlPath, tmpHtml)) {
         continue;
       }
-      // Larger chunks mean far fewer SD writes inflating the HTML; a 1KB chunk turned a 584KB
-      // single-spine novel into ~570 tiny writes (multi-second). 8KB keeps the transient buffers
-      // small while cutting the write count 8x.
-      streamed = epub->readItemContentsToStream(localPath, tmpHtml, 8192);
+      streamed = epub->readItemContentsToStream(localPath, tmpHtml, kChunkSizes[attempt]);
       fileSize = tmpHtml.size();
-      // Explicitly close() file before calling Storage.remove()
       tmpHtml.close();
 
-      // If streaming failed, remove the incomplete file immediately
       if (!streamed && Storage.exists(tmpHtmlPath.c_str())) {
         Storage.remove(tmpHtmlPath.c_str());
-        LOG_DBG("SCT", "Removed incomplete temp file after failed attempt");
+        LOG_DBG("SCT", "Removed incomplete temp file after failed attempt (%d chunk)", kChunkSizes[attempt]);
+      }
+    }
+
+    // Fallback for small chapters: load into memory and write to temp file directly.
+    // The streaming retries above may fail on heavily fragmented heap (the stream
+    // loop allocates a 32 KB inflate window), but reading the full item into memory
+    // with readItemContentsToBytes works with a single large allocation instead.
+    if (!streamed) {
+      const size_t itemSize =
+          epub->getCumulativeSpineItemSize(spineIndex) -
+          (spineIndex > 0 ? epub->getCumulativeSpineItemSize(spineIndex - 1) : 0);
+      constexpr size_t DIRECT_FALLBACK_LIMIT = 64 * 1024;
+      if (itemSize > 0 && itemSize <= DIRECT_FALLBACK_LIMIT) {
+        size_t bytesRead = 0;
+        uint8_t* data = epub->readItemContentsToBytes(localPath, &bytesRead);
+        if (data && bytesRead > 0) {
+          LOG_DBG("SCT", "Memory fallback: read %u bytes for small chapter", static_cast<unsigned>(bytesRead));
+          HalFile tmpHtml;
+          if (Storage.openFileForWrite("SCT", tmpHtmlPath, tmpHtml)) {
+            streamed = (tmpHtml.write(data, bytesRead) == static_cast<ssize_t>(bytesRead));
+            fileSize = tmpHtml.size();
+            tmpHtml.close();
+          }
+          delete[] data;
+          if (!streamed && Storage.exists(tmpHtmlPath.c_str())) {
+            Storage.remove(tmpHtmlPath.c_str());
+          }
+        }
       }
     }
 
