@@ -244,6 +244,12 @@ bool EpubReaderActivity::isJapaneseBook() const {
 void EpubReaderActivity::onExit() {
   Activity::onExit();
 
+  // Suspend any live vertical build so partial progress survives.
+  if (verticalSection_ && verticalSection_->isBuilding()) {
+    verticalSection_->suspendBuild();
+  }
+  flushBackgroundVerticalBuild();
+
   // The extractor holds a raw pointer to this activity's epub; drop it before
   // the activity (and the shared_ptr) goes away.
   ImageBlock::setExtractor(nullptr, nullptr);
@@ -437,6 +443,23 @@ void EpubReaderActivity::loop() {
         // The chapter re-paginated since the saved progress (settings changed): we now know the
         // real page count, so re-render at the remapped page. No-op for an unchanged resume.
         requestUpdate();
+      }
+    }
+  }
+
+  // Background build for incremental vertical section (current chapter).
+  if (isVerticalActive() && verticalSection_->isBuilding() && !RenderLock::peek() &&
+      buildTickHeapGate()) {
+    RenderLock lock;
+    if (verticalSection_->isBuilding() && buildTickHeapGate()) {
+      if (!verticalSection_->buildSomeMore(BACKGROUND_BUILD_PAGES_PER_TICK)) {
+        LOG_ERR("ERS", "Background vertical build failed");
+        verticalSection_->abandonBuild();
+        resetSection();
+        requestUpdate();
+      } else if (verticalSection_->isBuildComplete()) {
+        LOG_DBG("ERS", "Background vertical build complete");
+        // No need to re-render: reader already showing a page from this section.
       }
     }
   }
@@ -1152,12 +1175,31 @@ void EpubReaderActivity::render(RenderLock&& lock) {
         return true; // render will be called again with next spine
       };
 
-      if (!verticalSection_->loadSectionFile(fontId, viewportWidth, viewportHeight)) {
-        LOG_DBG("ERS", "Vertical cache not found, building...");
+      auto buildVerticalPage0 = [&]() -> bool {
+        // Try incremental build first: startBuild + buildSomeMore until page 0.
         GUI.drawPopup(renderer, tr(STR_INDEXING));
         pagesUntilFullRefresh = 1;
-        if (!verticalSection_->createSectionFile(fontId, viewportWidth, viewportHeight)) {
-          LOG_ERR("ERS", "Failed to build vertical section cache");
+        if (verticalSection_->startBuild(fontId, viewportWidth, viewportHeight)) {
+          while (verticalSection_->isBuilding() && verticalSection_->pageCount == 0) {
+            if (!verticalSection_->buildSomeMore(1)) {
+              verticalSection_->abandonBuild();
+              break;
+            }
+          }
+          if (verticalSection_->pageCount > 0) return true;
+        }
+        // Fallback: synchronous full build.
+        LOG_DBG("ERS", "Incremental build failed or produced no pages; falling back to full build");
+        if (verticalSection_->createSectionFile(fontId, viewportWidth, viewportHeight)) {
+          return verticalSection_->pageCount > 0;
+        }
+        return false;
+      };
+
+      if (!verticalSection_->loadSectionFile(fontId, viewportWidth, viewportHeight)) {
+        LOG_DBG("ERS", "Vertical cache not found, building...");
+        if (!buildVerticalPage0()) {
+          LOG_ERR("ERS", "Failed to build vertical section");
           verticalSection_.reset();
           showBuildError();
           return;
@@ -2040,6 +2082,9 @@ void EpubReaderActivity::silentIndexNextChapterIfNeeded(const uint16_t viewportW
   }
 
   if (isVerticalActive()) {
+    // Don't prebuild next chapter while the current chapter's build is still running.
+    if (verticalSection_ && verticalSection_->isBuilding()) return;
+
     const int fontId = SETTINGS.getReaderFontId();
     if (bgVerticalSection_ && (bgVerticalSpineIndex_ != nextSpineIndex || bgVerticalFontId_ != fontId ||
                                bgVerticalViewportWidth_ != viewportWidth ||
@@ -2057,10 +2102,7 @@ void EpubReaderActivity::silentIndexNextChapterIfNeeded(const uint16_t viewportW
         flushBackgroundVerticalBuild();
         return;
       }
-      if (bgVerticalSection_->isPartial()) {
-        flushBackgroundVerticalBuild();
-        return;
-      }
+      if (bgVerticalSection_->isPartial()) { flushBackgroundVerticalBuild(); return; }
       if (!bgVerticalSection_->startBuild(fontId, viewportWidth, viewportHeight)) {
         flushBackgroundVerticalBuild();
         return;

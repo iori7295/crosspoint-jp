@@ -196,6 +196,9 @@ class EpubReaderActivity final : public Activity {
   void flushBackgroundVerticalBuild();
   void resetSection() {
     flushBackgroundVerticalBuild();
+    if (verticalSection_ && verticalSection_->isBuilding()) {
+      verticalSection_->suspendBuild();
+    }
     section.reset();
     verticalSection_.reset();
   }
