@@ -160,6 +160,14 @@ struct TextExtractor {
   // stays small and stable for the whole build.
   static constexpr size_t SOFT_FLUSH_BYTES = 2048;
   static constexpr size_t SOFT_FLUSH_RUNS = 48;
+
+  static size_t currentSoftFlushBytes() {
+    return ESP.getMaxAllocHeap() < 24 * 1024 ? 1024 : SOFT_FLUSH_BYTES;
+  }
+
+  static size_t currentSoftFlushRuns() {
+    return ESP.getMaxAllocHeap() < 24 * 1024 ? 24 : SOFT_FLUSH_RUNS;
+  }
   bool midParagraph = false;
 
   // paragraphEnds=false streams a partial paragraph: the sink lays it out with no break
@@ -332,7 +340,7 @@ struct TextExtractor {
       self->inRuby = false;
       // Furigana-dense text accumulates many small runs without currentText ever growing;
       // stream them onward at the same cadence as the byte bound (see SOFT_FLUSH_RUNS).
-      if (self->currentRuns.size() >= SOFT_FLUSH_RUNS) self->emitRuns(false);
+      if (self->currentRuns.size() >= self->currentSoftFlushRuns()) self->emitRuns(false);
       return;
     }
     if (self->boldStackSize > 0 && self->boldOpenedAtDepth[self->boldStackSize - 1] == self->elementDepth) {
@@ -392,7 +400,7 @@ struct TextExtractor {
       self->currentText.append(s, static_cast<size_t>(len));
       // Streaming cadence: hand the buffered text onward as a seamless continuation well
       // before it grows large (see SOFT_FLUSH_BYTES).
-      if (self->currentText.size() >= SOFT_FLUSH_BYTES) self->emitRuns(false);
+      if (self->currentText.size() >= self->currentSoftFlushBytes()) self->emitRuns(false);
     }
   }
 
@@ -635,25 +643,16 @@ struct LayoutPageSink final : ParagraphSink {
 
   void onParagraph(std::vector<RubyRun>& runs, const bool continuesPrevious) override {
     if (failed) return;
-    // A single paragraph (one <p>/<div>, or many furigana-annotated RubyRuns) can itself hold
-    // thousands of characters -- MAX_PARAGRAPH_BYTES (16KB, ~5000+ CJK chars) only bounds the
-    // SAX-side accumulation buffers, not this batch's memory budget, and ordinary long-form prose
-    // routinely exceeds BATCH_CHARS on its own without ever hitting that limit. Feeding the whole
-    // paragraph to addAnnotatedParagraph() in one call let a single paragraph's stream_ growth
-    // blow past the intended batch size entirely -- confirmed on a real device: a 71-run/12KB
-    // paragraph needed a single ~160KB stream_ reserve, far more than the device's entire heap,
-    // well before pendingCount() ever got a chance to trigger a flush. Chunking runs here gives
-    // pendingCount() >= BATCH_CHARS a chance to fire (and flush) partway through a large paragraph
-    // instead of only after the whole thing is already buffered. Splitting mid-paragraph this way
-    // is the same accepted tradeoff as the existing MAX_PARAGRAPH_BYTES forced split (a stray
-    // column break where none existed in the source -- harmless compared to the alternative, OOM).
+
+    const uint32_t maxAlloc = ESP.getMaxAllocHeap();
+    const bool lowHeap = maxAlloc < 24 * 1024;
+    const size_t chunkCharBudget = lowHeap ? (BATCH_CHARS / 2) : BATCH_CHARS;
+    const size_t chunkByteBudget = lowHeap ? 1024 : 2048;
+    const size_t runSliceChars = lowHeap ? 64 : 170;
+
     std::vector<RubyRun> chunk;
     size_t chunkEstimatedChars = 0;
-    // Only the paragraph's FIRST chunk starts a new paragraph in the layout engine; later
-    // chunks continue it (no break recorded), so a flush between chunks no longer decides
-    // whether a stray column break appears -- see addAnnotatedParagraph's doc comment.
-    // continuesPrevious: this whole call is itself a continuation (streaming cadence from
-    // the extractor), so even its first chunk records no break.
+    size_t chunkEstimatedBytes = 0;
     bool firstChunkOfParagraph = !continuesPrevious;
     auto utf8Chars = [](const std::string& s) {
       size_t n = 0;
@@ -663,35 +662,37 @@ struct LayoutPageSink final : ParagraphSink {
       return n;
     };
     auto pushRun = [&](RubyRun&& run) {
-      // Only baseText contributes actual stream_ entries -- rubyText is folded into each base
-      // character's PendingChar.rubyText field. Counting is EXACT (UTF-8 lead bytes): the old
-      // bytes/3 estimate undercounted ASCII runs 3x, letting a chunk overshoot the batch cap
-      // and stream_'s preallocated capacity (see preallocateStream()).
       const size_t runEstimatedChars = utf8Chars(run.baseText);
+      const size_t runEstimatedBytes = run.baseText.size() + run.rubyText.size();
+
+      // Low-heap survival: oversized ruby payloads are more dangerous than losing ruby.
+      if (lowHeap && !run.rubyText.empty() && runEstimatedBytes > 768) {
+        LOG_ERR("VSC",
+                "Oversized ruby run on low heap; dropping ruby annotation (base=%u ruby=%u free=%u)",
+                static_cast<unsigned>(run.baseText.size()),
+                static_cast<unsigned>(run.rubyText.size()),
+                ESP.getMaxAllocHeap());
+        run.rubyText.clear();
+      }
+
       chunk.push_back(std::move(run));
       chunkEstimatedChars += runEstimatedChars;
-      if (layout.pendingCount() + chunkEstimatedChars >= BATCH_CHARS) {
+      chunkEstimatedBytes += runEstimatedBytes;
+      if (layout.pendingCount() + chunkEstimatedChars >= chunkCharBudget ||
+          chunkEstimatedBytes >= chunkByteBudget) {
         layout.addAnnotatedParagraph(chunk, !firstChunkOfParagraph);
         firstChunkOfParagraph = false;
         chunk.clear();
         chunkEstimatedChars = 0;
-        if (layout.pendingCount() >= BATCH_CHARS) flushText();
+        chunkEstimatedBytes = 0;
+        if (layout.pendingCount() >= chunkCharBudget) flushText();
       }
     };
-    // Chunking can only split BETWEEN runs, but sparse-furigana prose delivers multi-KB
-    // plain-text runs (one run spans everything between two ruby anchors -- or the whole
-    // forced-split paragraph when a book has no ruby at all). One such run fed to
-    // addAnnotatedParagraph() as a unit needs its whole PendingChar expansion (~12x the UTF-8
-    // bytes) in stream_ at once: a 16KB paragraph demanded a 218KB stream on a real device and
-    // strangled the heap until an unrelated small allocation aborted. Slice ruby-less runs at
-    // UTF-8 boundaries so the BATCH_CHARS flush works as designed; ruby runs stay whole (their
-    // base is a single annotated word -- slicing would detach the reading).
-    // Sliced by CHARACTER count, not bytes: a byte cap lets a pure-ASCII slice carry 3x the
-    // characters of a CJK one, overshooting the batch cadence and the stream_ preallocation.
-    constexpr size_t RUN_SLICE_CHARS = 170;  // same order as BATCH_CHARS
+    constexpr size_t RUN_SLICE_CHARS_FULL = 170;
+    const size_t sliceChars = lowHeap ? 64 : RUN_SLICE_CHARS_FULL;
     for (auto& run : runs) {
       if (failed) return;
-      if (run.rubyText.empty() && utf8Chars(run.baseText) > RUN_SLICE_CHARS) {
+      if (run.rubyText.empty() && utf8Chars(run.baseText) > sliceChars) {
         const std::string base = std::move(run.baseText);
         size_t pos = 0;
         while (pos < base.size() && !failed) {
@@ -699,7 +700,7 @@ struct LayoutPageSink final : ParagraphSink {
           size_t chars = 0;
           while (end < base.size()) {
             if ((static_cast<unsigned char>(base[end]) & 0xC0) != 0x80) {
-              if (chars == RUN_SLICE_CHARS) break;
+              if (chars == sliceChars) break;
               chars++;
             }
             end++;
@@ -719,8 +720,8 @@ struct LayoutPageSink final : ParagraphSink {
     if (!chunk.empty()) {
       layout.addAnnotatedParagraph(chunk, !firstChunkOfParagraph);
     }
-    runs.clear();  // free this paragraph's text now -- layout owns its own copy in the stream
-    if (layout.pendingCount() >= BATCH_CHARS) flushText();
+    runs.clear();
+    if (layout.pendingCount() >= chunkCharBudget) flushText();
   }
 
   void onImage(const std::string& src) override {

@@ -32,6 +32,19 @@ namespace {
 // falling back to incremental growth that fragmented the heap further.
 // 2KB leaves just enough cushion for concurrent SD writes and log lines.
 constexpr uint32_t MIN_FREE_HEAP_FOR_RESERVE = 2 * 1024;
+
+template <typename T>
+bool safeReserveVec(std::vector<T>& v, size_t want, uint32_t margin, const char* tag) {
+  if (want <= v.capacity()) return true;
+  const size_t bytes = want * sizeof(T);
+  if (ESP.getMaxAllocHeap() < bytes + margin) {
+    LOG_ERR("VPT", "Skipping %s reserve (%u bytes doesn't fit, free=%u)",
+            tag, static_cast<unsigned>(bytes), ESP.getMaxAllocHeap());
+    return false;
+  }
+  v.reserve(want);
+  return true;
+}
 }  // namespace
 
 namespace {
@@ -348,8 +361,9 @@ void VerticalParsedText::addAnnotatedParagraph(const std::vector<RubyRun>& runs,
     std::vector<size_t> baseOffsets;
     std::vector<uint32_t> baseCps;
     std::vector<size_t> breakBeforeBaseIndex;
-    baseOffsets.reserve(run.baseText.size());
-    baseCps.reserve(run.baseText.size());
+    const bool baseScratchOk =
+        safeReserveVec(baseOffsets, run.baseText.size(), 1024, "ruby baseOffsets") &&
+        safeReserveVec(baseCps,   run.baseText.size(), 1024, "ruby baseCps");
     {
       size_t i = 0;
       while (i < run.baseText.size()) {
@@ -397,7 +411,9 @@ void VerticalParsedText::addAnnotatedParagraph(const std::vector<RubyRun>& runs,
 
     const size_t runStartStreamIndex = stream_.size();
 
-    if (run.rubyText.empty()) {
+    if (run.rubyText.empty() || !baseScratchOk) {
+      // When base scratch vectors couldn't reserve, or the run has no ruby,
+      // push characters as plain text (no annotation).
       for (size_t k = 0; k < baseCps.size(); k++) {
         if (!canPushStreamChar()) return;
         stream_.push_back(
@@ -406,7 +422,15 @@ void VerticalParsedText::addAnnotatedParagraph(const std::vector<RubyRun>& runs,
     } else {
       // Decode ruby codepoints to distribute evenly across base characters.
       std::vector<uint32_t> rubyCps;
-      rubyCps.reserve(run.rubyText.size());
+      if (!safeReserveVec(rubyCps, run.rubyText.size(), 1024, "ruby rubyCps")) {
+        LOG_ERR("VPT", "Low heap while preparing ruby text; dropping ruby annotation for this run");
+        for (size_t k = 0; k < baseCps.size(); k++) {
+          if (!canPushStreamChar()) return;
+          stream_.push_back(PendingChar{baseCps[k], paragraphIndex,
+                                         static_cast<uint32_t>(baseOffsets[k]), run.style, run.emphasis, {}});
+        }
+        continue;
+      }
       {
         size_t ri = 0;
         while (ri < run.rubyText.size()) {
@@ -697,7 +721,7 @@ std::vector<VerticalPage> VerticalParsedText::layoutPages(void* ctx, PageReadyCa
       g.y = static_cast<uint16_t>(rowIdx * cellPx);
       g.renderKind = VerticalGlyph::RotatedPunct;
       g.rubyText = pc.rubyText;
-      appendGlyphOrForcePage(g);
+      if (!appendGlyphOrForcePage(g)) { everDroppedForHeap_ = true; return; }
       return;
     }
 
@@ -709,7 +733,7 @@ std::vector<VerticalPage> VerticalParsedText::layoutPages(void* ctx, PageReadyCa
       g.y = static_cast<uint16_t>(rowIdx * cellPx + ascender - std::max(1, cellPx / 8));
       g.renderKind = VerticalGlyph::Upright;
       g.rubyText = pc.rubyText;
-      appendGlyphOrForcePage(g);
+      if (!appendGlyphOrForcePage(g)) { everDroppedForHeap_ = true; return; }
       return;
     }
 
@@ -731,7 +755,7 @@ std::vector<VerticalPage> VerticalParsedText::layoutPages(void* ctx, PageReadyCa
     g.y = static_cast<uint16_t>(gy);
     g.renderKind = VerticalGlyph::Upright;
     g.rubyText = pc.rubyText;
-    appendGlyphOrForcePage(g);
+    if (!appendGlyphOrForcePage(g)) { everDroppedForHeap_ = true; return; }
   };
 
   auto placeUpright = [&](const PendingChar& pc) { placeUprightAt(pc, column, row); };
@@ -808,7 +832,7 @@ std::vector<VerticalPage> VerticalParsedText::layoutPages(void* ctx, PageReadyCa
         g.style = pc.style;
         g.renderKind = VerticalGlyph::UprightRun;
         g.rotatedRunText = runUtf8;
-        appendGlyphOrForcePage(g);
+        if (!appendGlyphOrForcePage(g)) { everDroppedForHeap_ = true; return pages; }
 
         row++;
         if (row >= rowsPerColumn) {
@@ -853,7 +877,7 @@ std::vector<VerticalPage> VerticalParsedText::layoutPages(void* ctx, PageReadyCa
         g.style = pc.style;
         g.renderKind = VerticalGlyph::RotatedRun;
         g.rotatedRunText = runUtf8;
-        appendGlyphOrForcePage(g);
+        if (!appendGlyphOrForcePage(g)) { everDroppedForHeap_ = true; return pages; }
 
         row = static_cast<uint16_t>(row + rowsNeeded);
         if (row >= rowsPerColumn) {
@@ -920,7 +944,7 @@ std::vector<VerticalPage> VerticalParsedText::layoutPages(void* ctx, PageReadyCa
           g.style = pc.style;
           g.renderKind = VerticalGlyph::RotatedRun;
           g.rotatedRunText = remaining;
-          appendGlyphOrForcePage(g);
+          if (!appendGlyphOrForcePage(g)) { everDroppedForHeap_ = true; return pages; }
           row = static_cast<uint16_t>(row + remRows);
           if (row >= rowsPerColumn) {
             column++;
@@ -963,7 +987,7 @@ std::vector<VerticalPage> VerticalParsedText::layoutPages(void* ctx, PageReadyCa
             g.byteOffset = pc.byteOffset;
             g.renderKind = VerticalGlyph::RotatedRun;
             g.rotatedRunText = remaining;
-            appendGlyphOrForcePage(g);
+            if (!appendGlyphOrForcePage(g)) { everDroppedForHeap_ = true; return pages; }
             row = std::min(remRows, rowsPerColumn);
             if (row >= rowsPerColumn) {
               column++;
@@ -993,7 +1017,7 @@ std::vector<VerticalPage> VerticalParsedText::layoutPages(void* ctx, PageReadyCa
         g.style = pc.style;
         g.renderKind = VerticalGlyph::RotatedRun;
         g.rotatedRunText = chunk;
-        appendGlyphOrForcePage(g);
+        if (!appendGlyphOrForcePage(g)) { everDroppedForHeap_ = true; return pages; }
 
         row = static_cast<uint16_t>(row + chunkRows);
         if (row >= rowsPerColumn) {
