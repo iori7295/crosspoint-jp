@@ -632,8 +632,38 @@ struct LayoutPageSink final : ParagraphSink {
   // then 320 -- still measurably dropped glyphs on the single most furigana-dense paragraph in a
   // real test chapter (71 runs), on top of the chunk-sizing estimate bug fixed alongside this
   // (see onParagraph()). Halved again; the trend across both prior reductions has been strictly
-  // more real content preserved with each halving.
-  static constexpr size_t BATCH_CHARS = 160;
+  // more real content preserved with each halving.  Reduced to 96 for the same reason: long
+  // paragraphs on X3 collapse maxAlloc from ~40 KB to ~3 KB inside a single onParagraph() call.
+  static constexpr size_t BATCH_CHARS = 96;
+
+  static size_t currentChunkCharBudget() {
+    const uint32_t m = ESP.getMaxAllocHeap();
+    if (m < 16 * 1024) return 24;
+    if (m < 24 * 1024) return 32;
+    if (m < 48 * 1024) return 48;
+    return BATCH_CHARS;
+  }
+  static size_t currentChunkByteBudget() {
+    const uint32_t m = ESP.getMaxAllocHeap();
+    if (m < 16 * 1024) return 256;
+    if (m < 24 * 1024) return 384;
+    if (m < 48 * 1024) return 512;
+    return 1024;
+  }
+  static size_t currentRunSliceChars() {
+    const uint32_t m = ESP.getMaxAllocHeap();
+    if (m < 16 * 1024) return 24;
+    if (m < 24 * 1024) return 32;
+    if (m < 48 * 1024) return 48;
+    return 96;
+  }
+  static size_t currentRubyByteLimit() {
+    const uint32_t m = ESP.getMaxAllocHeap();
+    if (m < 16 * 1024) return 192;
+    if (m < 24 * 1024) return 256;
+    if (m < 48 * 1024) return 384;
+    return 768;
+  }
 
   LayoutPageSink(VerticalParsedText& layout, HalFile& out, std::vector<uint32_t>& pageOffsets, Epub& epub,
                  GfxRenderer& renderer, const std::string& chapterDir, const std::string& imageBasePath,
@@ -652,16 +682,11 @@ struct LayoutPageSink final : ParagraphSink {
   void onParagraph(std::vector<RubyRun>& runs, const bool continuesPrevious) override {
     if (failed) return;
 
-    const uint32_t maxAlloc = ESP.getMaxAllocHeap();
-    const bool lowHeap = maxAlloc < 24 * 1024;
-    const size_t chunkCharBudget = lowHeap ? (BATCH_CHARS / 2) : BATCH_CHARS;
-    const size_t chunkByteBudget = lowHeap ? 1024 : 2048;
-    const size_t runSliceChars = lowHeap ? 64 : 170;
-
     std::vector<RubyRun> chunk;
     size_t chunkEstimatedChars = 0;
     size_t chunkEstimatedBytes = 0;
     bool firstChunkOfParagraph = !continuesPrevious;
+
     auto utf8Chars = [](const std::string& s) {
       size_t n = 0;
       for (const char c : s) {
@@ -669,37 +694,62 @@ struct LayoutPageSink final : ParagraphSink {
       }
       return n;
     };
-    auto pushRun = [&](RubyRun&& run) {
-      const size_t runEstimatedChars = utf8Chars(run.baseText);
-      const size_t runEstimatedBytes = run.baseText.size() + run.rubyText.size();
 
-      // Low-heap survival: oversized ruby payloads are more dangerous than losing ruby.
-      if (lowHeap && !run.rubyText.empty() && runEstimatedBytes > 768) {
+    auto flushChunk = [&]() {
+      if (failed || chunk.empty()) return;
+      layout.addAnnotatedParagraph(chunk, !firstChunkOfParagraph);
+      firstChunkOfParagraph = false;
+      chunk.clear();
+      chunkEstimatedChars = 0;
+      chunkEstimatedBytes = 0;
+      // If heap is already low, push pages out immediately instead of accumulating more.
+      if (ESP.getMaxAllocHeap() < 20 * 1024 || layout.pendingCount() >= currentChunkCharBudget()) {
+        flushText();
+      }
+    };
+
+    auto pushRun = [&](RubyRun&& run) {
+      if (failed) return;
+      const uint32_t freeNow = ESP.getMaxAllocHeap();
+      const size_t chunkCharBudget = currentChunkCharBudget();
+      const size_t chunkByteBudget = currentChunkByteBudget();
+      const size_t rubyByteLimit = currentRubyByteLimit();
+
+      const size_t runEstimatedChars = utf8Chars(run.baseText);
+      size_t runEstimatedBytes = run.baseText.size() + run.rubyText.size();
+
+      if (!run.rubyText.empty() && runEstimatedBytes > rubyByteLimit) {
         LOG_ERR("VSC",
-                "Oversized ruby run on low heap; dropping ruby annotation (base=%u ruby=%u free=%u)",
+                "Oversized ruby run; dropping ruby annotation (base=%u ruby=%u free=%u)",
                 static_cast<unsigned>(run.baseText.size()),
                 static_cast<unsigned>(run.rubyText.size()),
-                ESP.getMaxAllocHeap());
+                freeNow);
         run.rubyText.clear();
+        runEstimatedBytes = run.baseText.size();
+      }
+
+      // Flush BEFORE adding if over budget.
+      if (!chunk.empty() &&
+          (layout.pendingCount() + chunkEstimatedChars + runEstimatedChars >= chunkCharBudget ||
+           chunkEstimatedBytes + runEstimatedBytes >= chunkByteBudget)) {
+        flushChunk();
       }
 
       chunk.push_back(std::move(run));
       chunkEstimatedChars += runEstimatedChars;
       chunkEstimatedBytes += runEstimatedBytes;
+
       if (layout.pendingCount() + chunkEstimatedChars >= chunkCharBudget ||
-          chunkEstimatedBytes >= chunkByteBudget) {
-        layout.addAnnotatedParagraph(chunk, !firstChunkOfParagraph);
-        firstChunkOfParagraph = false;
-        chunk.clear();
-        chunkEstimatedChars = 0;
-        chunkEstimatedBytes = 0;
-        if (layout.pendingCount() >= chunkCharBudget) flushText();
+          chunkEstimatedBytes >= chunkByteBudget ||
+          ESP.getMaxAllocHeap() < 20 * 1024) {
+        flushChunk();
       }
     };
-    constexpr size_t RUN_SLICE_CHARS_FULL = 170;
-    const size_t sliceChars = lowHeap ? 64 : RUN_SLICE_CHARS_FULL;
+
     for (auto& run : runs) {
       if (failed) return;
+      const size_t sliceChars = currentRunSliceChars();
+
       if (run.rubyText.empty() && utf8Chars(run.baseText) > sliceChars) {
         const std::string base = std::move(run.baseText);
         size_t pos = 0;
@@ -722,14 +772,46 @@ struct LayoutPageSink final : ParagraphSink {
         }
         continue;
       }
+
+      if (!run.rubyText.empty() &&
+          (run.baseText.size() + run.rubyText.size()) > currentChunkByteBudget() &&
+          utf8Chars(run.baseText) > currentRunSliceChars()) {
+        const std::string base = std::move(run.baseText);
+        std::string ruby = std::move(run.rubyText);
+        size_t pos = 0;
+        bool first = true;
+        while (pos < base.size() && !failed) {
+          size_t end = pos;
+          size_t chars = 0;
+          const size_t sliceCharsRuby = currentRunSliceChars();
+          while (end < base.size()) {
+            if ((static_cast<unsigned char>(base[end]) & 0xC0) != 0x80) {
+              if (chars == sliceCharsRuby) break;
+              chars++;
+            }
+            end++;
+          }
+          RubyRun slice;
+          slice.baseText = base.substr(pos, end - pos);
+          slice.style = run.style;
+          slice.emphasis = run.emphasis;
+          if (first) {
+            slice.rubyText = std::move(ruby);
+            first = false;
+          }
+          pushRun(std::move(slice));
+          pos = end;
+        }
+        continue;
+      }
+
       pushRun(std::move(run));
     }
     if (failed) return;
     if (!chunk.empty()) {
-      layout.addAnnotatedParagraph(chunk, !firstChunkOfParagraph);
+      flushChunk();
     }
     runs.clear();
-    if (layout.pendingCount() >= chunkCharBudget) flushText();
   }
 
   void onImage(const std::string& src) override {
