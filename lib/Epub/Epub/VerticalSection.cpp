@@ -1107,6 +1107,11 @@ static bool patchVerticalCacheHeader(HalFile& file, uint16_t pageCount, uint32_t
 
 static bool finalizeVerticalCache(HalFile& file, const std::vector<uint32_t>& pageOffsets, uint16_t& pageCount,
                                    uint16_t flags) {
+  if (pageOffsets.empty()) {
+    LOG_ERR("VSC", "Refusing to finalize zero-page vertical cache");
+    pageCount = 0;
+    return false;
+  }
   const auto indexOffset = static_cast<uint32_t>(file.position());
   for (const uint32_t off : pageOffsets) {
     serialization::writePod(file, off);
@@ -1234,6 +1239,7 @@ void VerticalSection::abandonBuild() {
 void VerticalSection::suspendBuild() {
   if (!build_) return;
   if (pageOffsets_.empty()) {
+    LOG_DBG("VSC", "suspendBuild(): no built pages yet, abandoning");
     abandonBuild();
     return;
   }
@@ -1333,11 +1339,15 @@ bool VerticalSection::loadSectionFile(const int fontId, const uint16_t viewportW
   file.close();
   pageCount = cachedPageCount;
   partial_ = (flags & VSECTION_FLAG_PARTIAL) != 0;
-  if (partial_ && pageCount == 0) {
-    LOG_ERR("VSC", "Invalid partial cache: zero pages");
+
+  // Zero-page caches are always invalid — a valid vertical cache must have at least page 0.
+  if (pageCount == 0) {
+    LOG_ERR("VSC", "Invalid zero-page vertical cache");
     clearCache();
+    partial_ = false;
     return false;
   }
+
   LOG_DBG("VSC", "Opened cache: %u vertical pages (partial=%d)", pageCount, partial_ ? 1 : 0);
   return true;
 }

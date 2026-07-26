@@ -1126,30 +1126,45 @@ void EpubReaderActivity::render(RenderLock&& lock) {
     if (wantVertical) {
       verticalSection_ = std::make_unique<VerticalSection>(epub, currentSpineIndex, renderer);
       const int fontId = SETTINGS.getReaderFontId();
-      const bool cacheLoaded = verticalSection_->loadSectionFile(fontId, viewportWidth, viewportHeight);
-      if (!cacheLoaded) {
+      if (!verticalSection_->loadSectionFile(fontId, viewportWidth, viewportHeight)) {
         LOG_DBG("ERS", "Vertical cache not found, building...");
         GUI.drawPopup(renderer, tr(STR_INDEXING));
-        // Incremental build: build the first page, then background-build the rest.
+        pagesUntilFullRefresh = 1;
+        // Incremental build: MUST produce page 0 before returning.
         if (!verticalSection_->startBuild(fontId, viewportWidth, viewportHeight)) {
           LOG_ERR("ERS", "Failed to start vertical section build");
           verticalSection_.reset();
           showBuildError();
           return;
         }
-        while (!verticalSection_->isBuildComplete() && verticalSection_->pageCount == 0) {
+        while (verticalSection_->isBuilding() && verticalSection_->pageCount == 0) {
           if (!verticalSection_->buildSomeMore(1)) {
-            LOG_ERR("ERS", "Failed during vertical section build");
+            LOG_ERR("ERS", "Failed while building first vertical page");
+            verticalSection_->abandonBuild();
             verticalSection_.reset();
             showBuildError();
             return;
           }
+        }
+        if (verticalSection_->pageCount == 0) {
+          LOG_ERR("ERS", "Vertical build finished without producing page 0");
+          verticalSection_->clearCache();
+          verticalSection_.reset();
+          showBuildError();
+          return;
         }
       } else {
         LOG_DBG("ERS", "Vertical cache found, skipping build...");
       }
       LOG_DBG("ERS", "Vertical section loaded: %d pages, free heap=%u",
               verticalSection_->pageCount, ESP.getMaxAllocHeap());
+      if (verticalSection_->pageCount == 0) {
+        LOG_ERR("ERS", "Vertical cache loaded with zero pages");
+        verticalSection_->clearCache();
+        verticalSection_.reset();
+        showBuildError();
+        return;
+      }
     } else {
       section = std::unique_ptr<Section>(new Section(epub, currentSpineIndex, renderer));
       // Fresh section, fresh chance: a failed lazy extension start in a previous
@@ -1306,7 +1321,13 @@ void EpubReaderActivity::render(RenderLock&& lock) {
   renderer.clearScreen();
 
   if (isVerticalActive()) {
-    // Vertical mode rendering
+    if (verticalSection_->pageCount == 0) {
+      LOG_ERR("ERS", "Vertical section has zero pages at render");
+      verticalSection_->clearCache();
+      verticalSection_.reset();
+      showBuildError();
+      return;
+    }
     const auto* vpage = verticalSection_->getPage();
     if (!vpage) {
       LOG_ERR("ERS", "Failed to load vertical page - clearing cache");
