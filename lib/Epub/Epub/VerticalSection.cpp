@@ -1206,6 +1206,21 @@ bool VerticalSection::buildSomeMore(int maxPages) {
   build_->pagesAlreadyBuilt = static_cast<uint16_t>(pageOffsets_.size());
   pageCount = build_->pagesAlreadyBuilt;
 
+  // A spine item can legitimately produce zero vertical pages (image-only
+  // titlepage.xhtml, decorative wrapper, etc.).  Don't persist a zero-page
+  // cache; return success with pageCount=0 so the reader can skip to the
+  // next spine instead of treating it as a hard build failure.
+  if (pageCount == 0) {
+    const auto href = epub ? epub->getSpineItem(spineIndex).href : std::string();
+    LOG_DBG("VSC", "No renderable vertical pages for spine %d: %s", spineIndex, href.c_str());
+    build_->out.close();
+    Storage.remove(filePath.c_str());
+    if (!build_->htmlPath.empty()) Storage.remove(build_->htmlPath.c_str());
+    build_.reset();
+    partial_ = false;
+    return true;
+  }
+
   if (hitPageBudget) {
     partial_ = true;
     LOG_DBG("VSC", "Chunk build paused at %u pages (maxPages=%d)", pageCount, maxPages);

@@ -1126,45 +1126,49 @@ void EpubReaderActivity::render(RenderLock&& lock) {
     if (wantVertical) {
       verticalSection_ = std::make_unique<VerticalSection>(epub, currentSpineIndex, renderer);
       const int fontId = SETTINGS.getReaderFontId();
+      auto checkEmptyVerticalSpine = [&]() -> bool {
+        if (!verticalSection_ || verticalSection_->pageCount > 0) return false;
+        // Zero-page vertical spine: image-only title page, decorative wrapper, etc.
+        // Skip to the next spine instead of showing a build error.
+        if (currentSpineIndex + 1 >= epub->getSpineItemsCount()) {
+          LOG_ERR("ERS", "Vertical spine %d has no pages and no more spines: %s",
+                  currentSpineIndex, filepath.c_str());
+          verticalSection_->clearCache();
+          verticalSection_.reset();
+          showBuildError();
+          return true; // stop, error displayed
+        }
+        LOG_DBG("ERS", "Skipping empty vertical spine %d -> %d (%s)",
+                currentSpineIndex, currentSpineIndex + 1, filepath.c_str());
+        verticalSection_->clearCache();
+        verticalSection_.reset();
+        currentSpineIndex++;
+        nextPageNumber = 0;
+        pendingPageJump.reset();
+        pendingAnchor.clear();
+        pendingPercentJump = false;
+        cachedChapterTotalPageCount = 0;
+        requestUpdate();
+        return true; // render will be called again with next spine
+      };
+
       if (!verticalSection_->loadSectionFile(fontId, viewportWidth, viewportHeight)) {
         LOG_DBG("ERS", "Vertical cache not found, building...");
         GUI.drawPopup(renderer, tr(STR_INDEXING));
         pagesUntilFullRefresh = 1;
-        // Incremental build: MUST produce page 0 before returning.
-        if (!verticalSection_->startBuild(fontId, viewportWidth, viewportHeight)) {
-          LOG_ERR("ERS", "Failed to start vertical section build");
+        if (!verticalSection_->createSectionFile(fontId, viewportWidth, viewportHeight)) {
+          LOG_ERR("ERS", "Failed to build vertical section cache");
           verticalSection_.reset();
           showBuildError();
           return;
         }
-        while (verticalSection_->isBuilding() && verticalSection_->pageCount == 0) {
-          if (!verticalSection_->buildSomeMore(1)) {
-            LOG_ERR("ERS", "Failed while building first vertical page");
-            verticalSection_->abandonBuild();
-            verticalSection_.reset();
-            showBuildError();
-            return;
-          }
-        }
-        if (verticalSection_->pageCount == 0) {
-          LOG_ERR("ERS", "Vertical build finished without producing page 0");
-          verticalSection_->clearCache();
-          verticalSection_.reset();
-          showBuildError();
-          return;
-        }
+        if (checkEmptyVerticalSpine()) return;
       } else {
         LOG_DBG("ERS", "Vertical cache found, skipping build...");
+        if (checkEmptyVerticalSpine()) return;
       }
       LOG_DBG("ERS", "Vertical section loaded: %d pages, free heap=%u",
               verticalSection_->pageCount, ESP.getMaxAllocHeap());
-      if (verticalSection_->pageCount == 0) {
-        LOG_ERR("ERS", "Vertical cache loaded with zero pages");
-        verticalSection_->clearCache();
-        verticalSection_.reset();
-        showBuildError();
-        return;
-      }
     } else {
       section = std::unique_ptr<Section>(new Section(epub, currentSpineIndex, renderer));
       // Fresh section, fresh chance: a failed lazy extension start in a previous
@@ -1322,7 +1326,20 @@ void EpubReaderActivity::render(RenderLock&& lock) {
 
   if (isVerticalActive()) {
     if (verticalSection_->pageCount == 0) {
-      LOG_ERR("ERS", "Vertical section has zero pages at render");
+      LOG_DBG("ERS", "Vertical section has zero pages at render, skipping spine");
+      if (currentSpineIndex + 1 < epub->getSpineItemsCount()) {
+        verticalSection_->clearCache();
+        verticalSection_.reset();
+        currentSpineIndex++;
+        nextPageNumber = 0;
+        pendingPageJump.reset();
+        pendingAnchor.clear();
+        pendingPercentJump = false;
+        cachedChapterTotalPageCount = 0;
+        requestUpdate();
+        return;
+      }
+      LOG_ERR("ERS", "Vertical section has zero pages at end of book");
       verticalSection_->clearCache();
       verticalSection_.reset();
       showBuildError();
