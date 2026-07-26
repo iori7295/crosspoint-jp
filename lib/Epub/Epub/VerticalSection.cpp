@@ -1216,7 +1216,7 @@ bool VerticalSection::buildSomeMore(int maxPages) {
     build_->out.close();
     Storage.remove(filePath.c_str());
     if (!build_->htmlPath.empty()) Storage.remove(build_->htmlPath.c_str());
-    build_.reset();
+    buildInProgress_ = false; build_.reset();
     partial_ = false;
     return true;
   }
@@ -1235,7 +1235,7 @@ bool VerticalSection::buildSomeMore(int maxPages) {
   build_->out.close();
   Storage.remove(build_->htmlPath.c_str());
   LOG_DBG("VSC", "Cached %u vertical pages (complete)", pageCount);
-  build_.reset();
+  buildInProgress_ = false; build_.reset();
   partial_ = false;
   return true;
 }
@@ -1247,7 +1247,7 @@ void VerticalSection::abandonBuild() {
   Storage.remove(filePath.c_str());
   pageOffsets_.clear();
   pageCount = 0;
-  build_.reset();
+  buildInProgress_ = false; build_.reset();
   partial_ = false;
 }
 
@@ -1269,7 +1269,7 @@ void VerticalSection::suspendBuild() {
   if (!htmlPath.empty() && Storage.exists(htmlPath.c_str())) {
     Storage.remove(htmlPath.c_str());
   }
-  build_.reset();
+  buildInProgress_ = false; build_.reset();
   partial_ = true;
   LOG_DBG("VSC", "Suspended vertical build at %u pages", static_cast<unsigned>(pageCount));
 }

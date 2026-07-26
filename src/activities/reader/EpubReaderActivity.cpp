@@ -1401,8 +1401,10 @@ void EpubReaderActivity::render(RenderLock&& lock) {
     currentPageFootnotes.clear();
     const int fontId = SETTINGS.getReaderFontId();
     const int rubyFontId = SETTINGS.getRubyFontId();
-    // Prewarm glyph bitmaps for this page
-    if (renderer.isSdCardFont(fontId)) {
+    // Prewarm glyph bitmaps for this page.
+    // Skip on low heap (< 16 KB maxAlloc) to avoid OOM in mini-kern build.
+    const bool lowHeapRender = ESP.getMaxAllocHeap() < 16 * 1024;
+    if (!lowHeapRender && renderer.isSdCardFont(fontId)) {
       std::string pageUtf8;
       pageUtf8.reserve(vpage->glyphs.size() * 4);
       uint8_t styleMask = 0;

@@ -302,26 +302,27 @@ bool Section::startBuild(const ReaderRenderSpec& spec, const std::function<void(
     // loop allocates a 32 KB inflate window), but reading the full item into memory
     // with readItemContentsToBytes works with a single large allocation instead.
     if (!streamed) {
-      const size_t itemSize =
-          epub->getCumulativeSpineItemSize(spineIndex) -
-          (spineIndex > 0 ? epub->getCumulativeSpineItemSize(spineIndex - 1) : 0);
-      constexpr size_t DIRECT_FALLBACK_LIMIT = 64 * 1024;
-      if (itemSize > 0 && itemSize <= DIRECT_FALLBACK_LIMIT) {
-        size_t bytesRead = 0;
-        uint8_t* data = epub->readItemContentsToBytes(localPath, &bytesRead);
-        if (data && bytesRead > 0) {
-          LOG_DBG("SCT", "Memory fallback: read %u bytes for small chapter", static_cast<unsigned>(bytesRead));
-          HalFile tmpHtml;
-          if (Storage.openFileForWrite("SCT", tmpHtmlPath, tmpHtml)) {
-            streamed = (tmpHtml.write(data, bytesRead) == static_cast<ssize_t>(bytesRead));
-            fileSize = tmpHtml.size();
-            tmpHtml.close();
-          }
-          delete[] data;
-          if (!streamed && Storage.exists(tmpHtmlPath.c_str())) {
-            Storage.remove(tmpHtmlPath.c_str());
-          }
+      // Try memory fallback: read into RAM then write to file.
+      // The streaming path may fail on fragmented heap (32 KB inflate window);
+      // a single readItemContentsToBytes may succeed when the same ZIP entry
+      // fits in one allocation.  We try regardless of itemSize (which may be
+      // 0 from getCumulativeSpineItemSize) and only skip for large items.
+      size_t bytesRead = 0;
+      uint8_t* data = epub->readItemContentsToBytes(localPath, &bytesRead);
+      if (data && bytesRead > 0 && bytesRead <= 128 * 1024) {
+        LOG_DBG("SCT", "Memory fallback: read %u bytes for chapter", static_cast<unsigned>(bytesRead));
+        HalFile tmpHtml;
+        if (Storage.openFileForWrite("SCT", tmpHtmlPath, tmpHtml)) {
+          streamed = (tmpHtml.write(data, bytesRead) == static_cast<ssize_t>(bytesRead));
+          fileSize = tmpHtml.size();
+          tmpHtml.close();
         }
+        delete[] data;
+        if (!streamed && Storage.exists(tmpHtmlPath.c_str())) {
+          Storage.remove(tmpHtmlPath.c_str());
+        }
+      } else {
+        delete[] data;
       }
     }
 

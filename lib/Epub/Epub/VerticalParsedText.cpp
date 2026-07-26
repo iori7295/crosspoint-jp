@@ -624,9 +624,15 @@ std::vector<VerticalPage> VerticalParsedText::layoutPages(void* ctx, PageReadyCa
       glyphs.push_back(g);
       return true;
     }
-    constexpr uint32_t SMALL_ALLOC_MARGIN = 2 * 1024;  // headroom for the rest of the app, not the reserve() margin
-    constexpr size_t LINEAR_GROWTH_STEP = 16;  // elements; keeps a stalled page's retries cheap
-
+    const uint32_t currentMaxAlloc = ESP.getMaxAllocHeap();
+    constexpr uint32_t SMALL_ALLOC_MARGIN_FULL = 2 * 1024;
+    constexpr uint32_t SMALL_ALLOC_MARGIN_LOW = 1 * 1024;
+    constexpr uint32_t SMALL_ALLOC_MARGIN_MIN = 256;
+    const uint32_t SMALL_ALLOC_MARGIN =
+        currentMaxAlloc < 6 * 1024 ? SMALL_ALLOC_MARGIN_MIN :
+        currentMaxAlloc < 12 * 1024 ? SMALL_ALLOC_MARGIN_LOW :
+        SMALL_ALLOC_MARGIN_FULL;
+    constexpr size_t LINEAR_GROWTH_STEP = 16;
     const size_t doubledCapacity = glyphs.capacity() == 0 ? 1 : glyphs.capacity() * 2;
     const size_t doubledBytes = doubledCapacity * sizeof(VerticalGlyph);
     if (ESP.getMaxAllocHeap() >= doubledBytes + SMALL_ALLOC_MARGIN) {
@@ -647,9 +653,8 @@ std::vector<VerticalPage> VerticalParsedText::layoutPages(void* ctx, PageReadyCa
     // even on a critically fragmented heap.  The next push will try doubled →
     // linear → single again, so if the heap recovers it self-throttles up.
     // On a sub-3 KB heap even the 2 KB SMALL_ALLOC_MARGIN overwhelms the
-    // single-element request (~432 bytes) — try with a minimal 512-byte margin
-    // so the absolute smallest growth still passes.
-    constexpr size_t MIN_HEADROOM = 512;
+    // single-element request (~432 bytes) — try with a minimal margin.
+    const size_t MIN_HEADROOM = currentMaxAlloc < 6 * 1024 ? 128 : 256;
     const size_t singleCapacity = glyphs.capacity() + 1;
     const size_t singleBytes = singleCapacity * sizeof(VerticalGlyph);
     if (ESP.getMaxAllocHeap() >= singleBytes + SMALL_ALLOC_MARGIN) {
