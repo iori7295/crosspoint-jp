@@ -1398,6 +1398,23 @@ void EpubReaderActivity::render(RenderLock&& lock) {
       return;
     }
 
+    // Skip image-only / empty title pages (0 glyphs, 0 columns) by advancing
+    // to the next spine.  These are common for titlepage.xhtml cover pages.
+    if (vpage->glyphs.empty() && vpage->columnCount == 0 && currentSpineIndex == 0) {
+      LOG_DBG("ERS", "Skipping blank vertical titlepage spine %d", currentSpineIndex);
+      if (currentSpineIndex + 1 < epub->getSpineItemsCount()) {
+        verticalSection_->clearCache();
+        verticalSection_.reset();
+        currentSpineIndex++;
+        nextPageNumber = 0;
+        pendingPageJump.reset();
+        pendingAnchor.clear();
+        pendingPercentJump = false;
+        requestUpdate();
+        return;
+      }
+    }
+
     currentPageFootnotes.clear();
     const int fontId = SETTINGS.getReaderFontId();
     const int rubyFontId = SETTINGS.getRubyFontId();

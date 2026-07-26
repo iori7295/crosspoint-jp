@@ -68,6 +68,31 @@ bool safeReserveVec(std::vector<T>& v, size_t want, uint32_t margin, const char*
   v.reserve(want);
   return true;
 }
+
+// Per-push growth needs a much smaller safety margin than the page-level reserve.
+static uint32_t currentSmallAllocMargin() {
+  const uint32_t m = ESP.getMaxAllocHeap();
+  if (m < 6 * 1024) return 256;
+  if (m < 12 * 1024) return 1024;
+  return 2048;
+}
+static uint32_t currentMinHeadroom() {
+  const uint32_t m = ESP.getMaxAllocHeap();
+  if (m < 6 * 1024) return 128;
+  if (m < 12 * 1024) return 256;
+  return 512;
+}
+
+// Try to reserve `want` elements; return true on success.
+static bool tryReserveSeed(std::vector<VerticalGlyph>& v, size_t want, uint32_t headroom, const char* tag) {
+  if (want <= v.capacity()) return true;
+  const size_t bytes = want * sizeof(VerticalGlyph);
+  const uint32_t free = ESP.getMaxAllocHeap();
+  if (free < bytes + headroom) return false;
+  v.reserve(want);
+  LOG_DBG("VPT", "Seed %s reserve=%u (free=%u)", tag, static_cast<unsigned>(want), free);
+  return true;
+}
 }  // namespace
 
 namespace {
@@ -588,12 +613,21 @@ std::vector<VerticalPage> VerticalParsedText::layoutPages(void* ctx, PageReadyCa
   // memory use during its own relocation). Check the request against free heap every time.
   auto reservePageGlyphs = [&](VerticalPage& p) {
     const size_t requestBytes = glyphsPerPage * sizeof(VerticalGlyph);
-    if (ESP.getMaxAllocHeap() >= requestBytes + MIN_FREE_HEAP_FOR_RESERVE) {
+    const uint32_t free = ESP.getMaxAllocHeap();
+    if (free >= requestBytes + MIN_FREE_HEAP_FOR_RESERVE) {
       p.glyphs.reserve(glyphsPerPage);
-    } else {
-      LOG_ERR("VPT", "Skipping page glyphs reserve (%u bytes doesn't fit, free=%u); growing incrementally",
-              static_cast<unsigned>(requestBytes), ESP.getMaxAllocHeap());
+      return;
     }
+    // Full-page reserve doesn't fit; seed with a small capacity so we don't
+    // start from capacity==0 and reallocate for every few glyphs.
+    static constexpr size_t kSeedCaps[] = {32, 16, 8, 4};
+    const uint32_t headroom = currentMinHeadroom();
+    for (size_t seed : kSeedCaps) {
+      if (tryReserveSeed(p.glyphs, seed, headroom, "page glyph seed")) return;
+    }
+    LOG_ERR("VPT",
+            "Skipping page glyphs reserve (%u bytes doesn't fit, free=%u); no seed reserve fits",
+            static_cast<unsigned>(requestBytes), free);
   };
 
   // Skipping the reserve above is only safe if every individual push_back is ALSO guarded --
@@ -624,14 +658,7 @@ std::vector<VerticalPage> VerticalParsedText::layoutPages(void* ctx, PageReadyCa
       glyphs.push_back(g);
       return true;
     }
-    const uint32_t currentMaxAlloc = ESP.getMaxAllocHeap();
-    constexpr uint32_t SMALL_ALLOC_MARGIN_FULL = 2 * 1024;
-    constexpr uint32_t SMALL_ALLOC_MARGIN_LOW = 1 * 1024;
-    constexpr uint32_t SMALL_ALLOC_MARGIN_MIN = 256;
-    const uint32_t SMALL_ALLOC_MARGIN =
-        currentMaxAlloc < 6 * 1024 ? SMALL_ALLOC_MARGIN_MIN :
-        currentMaxAlloc < 12 * 1024 ? SMALL_ALLOC_MARGIN_LOW :
-        SMALL_ALLOC_MARGIN_FULL;
+    const uint32_t SMALL_ALLOC_MARGIN = currentSmallAllocMargin();
     constexpr size_t LINEAR_GROWTH_STEP = 16;
     const size_t doubledCapacity = glyphs.capacity() == 0 ? 1 : glyphs.capacity() * 2;
     const size_t doubledBytes = doubledCapacity * sizeof(VerticalGlyph);
@@ -652,9 +679,7 @@ std::vector<VerticalPage> VerticalParsedText::layoutPages(void* ctx, PageReadyCa
     // Last resort: grow by a single element so we never silently drop a glyph
     // even on a critically fragmented heap.  The next push will try doubled →
     // linear → single again, so if the heap recovers it self-throttles up.
-    // On a sub-3 KB heap even the 2 KB SMALL_ALLOC_MARGIN overwhelms the
-    // single-element request (~432 bytes) — try with a minimal margin.
-    const size_t MIN_HEADROOM = currentMaxAlloc < 6 * 1024 ? 128 : 256;
+    const size_t MIN_HEADROOM = currentMinHeadroom();
     const size_t singleCapacity = glyphs.capacity() + 1;
     const size_t singleBytes = singleCapacity * sizeof(VerticalGlyph);
     if (ESP.getMaxAllocHeap() >= singleBytes + SMALL_ALLOC_MARGIN) {
@@ -723,6 +748,11 @@ std::vector<VerticalPage> VerticalParsedText::layoutPages(void* ctx, PageReadyCa
     LOG_DBG("VPT", "Forcing page break to avoid glyph drop (free=%u)", ESP.getMaxAllocHeap());
     column = columnsPerPage;
     finalizePageIfNeeded();
+
+    // Seed the fresh page with tiny capacity so the retry enters the fast path.
+    if (page.glyphs.capacity() == 0) {
+      tryReserveSeed(page.glyphs, 4, currentMinHeadroom(), "forced-break glyph seed");
+    }
 
     if (pushGlyph(page.glyphs, g)) return true;
 
