@@ -197,6 +197,12 @@ void SdCardFont::freeAll() {
 }
 
 void SdCardFont::clearOverflow() {
+  if (overflowPageLoads_ > 0 || overflowPageHits_ > 0 || overflowPageEvictions_ > 0) {
+    LOG_DBG("SDCF",
+            "Overflow summary: loads=%u hits=%u evictions=%u suppressed=%u cap=%u",
+            overflowPageLoads_, overflowPageHits_, overflowPageEvictions_,
+            overflowPageSuppressedLogs_, OVERFLOW_CAPACITY);
+  }
   for (uint32_t i = 0; i < overflowCount_; i++) {
     delete[] overflow_[i].bitmap;
     overflow_[i].bitmap = nullptr;
@@ -204,6 +210,10 @@ void SdCardFont::clearOverflow() {
   }
   overflowCount_ = 0;
   overflowNext_ = 0;
+  overflowPageLoads_ = 0;
+  overflowPageHits_ = 0;
+  overflowPageEvictions_ = 0;
+  overflowPageSuppressedLogs_ = 0;
 }
 
 // --- Per-style kern/ligature ---
@@ -1472,6 +1482,7 @@ const EpdGlyph* SdCardFont::onGlyphMiss(void* ctx, uint32_t codepoint) {
   // Check overflow cache first (matching both codepoint and style)
   for (uint32_t i = 0; i < self->overflowCount_; i++) {
     if (self->overflow_[i].codepoint == codepoint && self->overflow_[i].styleIdx == styleIdx) {
+      self->overflowPageHits_++;
       return &self->overflow_[i].glyph;
     }
   }
@@ -1529,6 +1540,7 @@ const EpdGlyph* SdCardFont::onGlyphMiss(void* ctx, uint32_t codepoint) {
   // All reads succeeded — commit to slot and advance ring buffer
   if (wasAtCapacity) {
     delete[] self->overflow_[slot].bitmap;
+    self->overflowPageEvictions_++;
   } else {
     self->overflowCount_++;
   }
@@ -1538,8 +1550,18 @@ const EpdGlyph* SdCardFont::onGlyphMiss(void* ctx, uint32_t codepoint) {
   self->overflow_[slot].codepoint = codepoint;
   self->overflow_[slot].styleIdx = styleIdx;
 
-  LOG_DBG("SDCF", "Overflow: loaded U+%04X style %u on demand (slot %u/%u)", codepoint, styleIdx, slot,
-          OVERFLOW_CAPACITY);
+  self->overflowPageLoads_++;
+  if (self->overflowPageLoads_ <= OVERFLOW_VERBOSE_LOG_LIMIT) {
+    LOG_DBG("SDCF", "Overflow: loaded U+%04X style %u on demand (slot %u/%u)",
+            codepoint, styleIdx, slot, OVERFLOW_CAPACITY);
+  } else {
+    self->overflowPageSuppressedLogs_++;
+    if (self->overflowPageLoads_ == OVERFLOW_VERBOSE_LOG_LIMIT + 1) {
+      LOG_DBG("SDCF",
+              "Overflow: suppressing per-glyph logs after %u loads (cap=%u)",
+              OVERFLOW_VERBOSE_LOG_LIMIT, OVERFLOW_CAPACITY);
+    }
+  }
 
   return &self->overflow_[slot].glyph;
 }

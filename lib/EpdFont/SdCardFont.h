@@ -242,8 +242,12 @@ class SdCardFont {
   };
   OverflowContext overflowCtx_[MAX_STYLES] = {};
 
-  // Shared on-demand overflow buffer (ring buffer of glyphs loaded via glyphMissHandler)
-  static constexpr uint32_t OVERFLOW_CAPACITY = 32;
+  // Shared on-demand overflow buffer (ring buffer of glyphs loaded via glyphMissHandler).
+  // 32 is workable for most pages but dense Japanese vertical text with ruby frequently
+  // exceeds this, causing eviction/reload churn that doubles page-render latency.
+  // 48 is a modest increase that cuts eviction pressure without retaining too many bitmaps.
+  static constexpr uint32_t OVERFLOW_CAPACITY = 48;
+  static constexpr uint32_t OVERFLOW_VERBOSE_LOG_LIMIT = 8;
   struct OverflowEntry {
     EpdGlyph glyph;
     uint8_t* bitmap = nullptr;
@@ -253,6 +257,10 @@ class SdCardFont {
   OverflowEntry overflow_[OVERFLOW_CAPACITY] = {};
   uint32_t overflowCount_ = 0;
   uint32_t overflowNext_ = 0;
+  uint32_t overflowPageLoads_ = 0;
+  uint32_t overflowPageHits_ = 0;
+  uint32_t overflowPageEvictions_ = 0;
+  uint32_t overflowPageSuppressedLogs_ = 0;
 
   // Compact advance-only table for layout measurement (per-style).
   // Built by buildAdvanceTable(), queried by getAdvance().
