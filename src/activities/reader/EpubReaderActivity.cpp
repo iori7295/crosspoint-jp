@@ -1422,20 +1422,36 @@ void EpubReaderActivity::render(RenderLock&& lock) {
     // Skip on low heap (< 16 KB maxAlloc) to avoid OOM in mini-kern build.
     const bool lowHeapRender = ESP.getMaxAllocHeap() < 16 * 1024;
     if (!lowHeapRender && renderer.isSdCardFont(fontId)) {
-      std::string pageUtf8;
-      pageUtf8.reserve(vpage->glyphs.size() * 4);
-      uint8_t styleMask = 0;
+      // Chunk unique codepoints into batches of 32 to avoid a single massive
+      // prewarm call that would spike heap for miniGlyph/miniBitmap arrays.
+      constexpr size_t kWarmChunk = 32;
+      std::vector<uint32_t> seen;
+      seen.reserve(vpage->glyphs.size());
+      auto flushChunk = [&](std::string& utf8, uint8_t mask) {
+        if (!utf8.empty()) {
+          renderer.ensureSdCardFontGlyphsReady(fontId, utf8.c_str(), mask ? mask : 0x01);
+        }
+      };
+      std::string chunkUtf8;
+      uint8_t chunkMask = 0;
+      size_t chunkCount = 0;
       for (const auto& g : vpage->glyphs) {
-        styleMask |= (1u << (g.style & 3));
+        if (std::find(seen.begin(), seen.end(), g.codepoint) != seen.end()) continue;
+        seen.push_back(g.codepoint);
+        chunkMask |= (1u << (g.style & 3));
         char buf[5]; int len = 0;
-        if (g.codepoint < 0x80) { buf[0] = g.codepoint; len = 1; }
-        else if (g.codepoint < 0x800) { buf[0] = 0xC0 | (g.codepoint >> 6); buf[1] = 0x80 | (g.codepoint & 0x3F); len = 2; }
-        else if (g.codepoint < 0x10000) { buf[0] = 0xE0 | (g.codepoint >> 12); buf[1] = 0x80 | ((g.codepoint >> 6) & 0x3F); buf[2] = 0x80 | (g.codepoint & 0x3F); len = 3; }
-        else { buf[0] = 0xF0 | (g.codepoint >> 18); buf[1] = 0x80 | ((g.codepoint >> 12) & 0x3F); buf[2] = 0x80 | ((g.codepoint >> 6) & 0x3F); buf[3] = 0x80 | (g.codepoint & 0x3F); len = 4; }
-        pageUtf8.append(buf, len);
-        if (!g.rubyText.empty()) pageUtf8 += g.rubyText;
+        if (g.codepoint < 0x80) { buf[0] = static_cast<char>(g.codepoint); len = 1; }
+        else if (g.codepoint < 0x800) { buf[0] = static_cast<char>(0xC0 | (g.codepoint >> 6)); buf[1] = static_cast<char>(0x80 | (g.codepoint & 0x3F)); len = 2; }
+        else if (g.codepoint < 0x10000) { buf[0] = static_cast<char>(0xE0 | (g.codepoint >> 12)); buf[1] = static_cast<char>(0x80 | ((g.codepoint >> 6) & 0x3F)); buf[2] = static_cast<char>(0x80 | (g.codepoint & 0x3F)); len = 3; }
+        else { buf[0] = static_cast<char>(0xF0 | (g.codepoint >> 18)); buf[1] = static_cast<char>(0x80 | ((g.codepoint >> 12) & 0x3F)); buf[2] = static_cast<char>(0x80 | ((g.codepoint >> 6) & 0x3F)); buf[3] = static_cast<char>(0x80 | (g.codepoint & 0x3F)); len = 4; }
+        chunkUtf8.append(buf, len);
+        if (!g.rubyText.empty()) chunkUtf8 += g.rubyText;
+        if (++chunkCount >= kWarmChunk) {
+          flushChunk(chunkUtf8, chunkMask);
+          chunkUtf8.clear(); chunkMask = 0; chunkCount = 0;
+        }
       }
-      renderer.ensureSdCardFontGlyphsReady(fontId, pageUtf8.c_str(), styleMask ? styleMask : 0x01);
+      flushChunk(chunkUtf8, chunkMask);
     }
     {
       const auto start = millis();

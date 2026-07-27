@@ -1070,7 +1070,12 @@ int SdCardFont::prewarmStyle(uint8_t styleIdx, const uint32_t* codepoints, uint3
   // page's codepoints. Skip during metadata-only prewarm — layout only needs
   // advanceX and the mini kern would be thrown away before rendering.
   bool kernLigOk = false;
-  if (!metadataOnly) {
+  // Skip mini-kern build on low heap (< 32 KB maxAlloc).  The matrix
+  // allocation (often 0.5-2 KB) is small, but its deallocation + rebuild
+  // every page turn punches holes in an already-fragmented heap, making
+  // the contiguous block situation worse for the render path.
+  static constexpr uint32_t kMiniKernMinHeap = 32 * 1024;
+  if (!metadataOnly && ESP.getMaxAllocHeap() >= kMiniKernMinHeap) {
     if (loadStyleKernLigatureData(s)) {
       kernLigOk = buildMiniKernMatrix(s, codepoints, cpCount);
     }
@@ -1102,6 +1107,10 @@ int SdCardFont::prewarmStyle(uint8_t styleIdx, const uint32_t* codepoints, uint3
   stats_.seekCount += seekCount;
   stats_.uniqueGlyphs += validCount;
   stats_.bitmapBytes += totalBitmapSize;
+
+  LOG_DBG("SDCF", "prewarmStyle[%u]: cpCount=%u valid=%u missed=%u miniGlyph=%u miniIntv=%u bitmaps=%uB%s",
+          styleIdx, cpCount, validCount, missed, s.miniGlyphCount, s.miniIntervalCount, totalBitmapSize,
+          metadataOnly ? " meta" : "");
 
   return missed;
 }
