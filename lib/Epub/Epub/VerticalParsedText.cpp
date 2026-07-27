@@ -614,40 +614,57 @@ std::vector<VerticalPage> VerticalParsedText::layoutPages(void* ctx, PageReadyCa
     }
   }
 
+  // Per-page helpers that adapt to the current heap pressure.
+  // These are re-evaluated on each call so they self-throttle as memory tightens.
+  auto currentGlyphGrowthMargin = [&]() -> uint32_t {
+    const uint32_t f = ESP.getMaxAllocHeap();
+    if (f < 6 * 1024) return 256;
+    if (f < 10 * 1024) return 512;
+    if (f < 16 * 1024) return 1024;
+    return 2 * 1024;
+  };
+  auto currentGlyphMinHeadroom = [&]() -> uint32_t {
+    const uint32_t f = ESP.getMaxAllocHeap();
+    if (f < 6 * 1024) return 128;
+    if (f < 10 * 1024) return 256;
+    return 512;
+  };
+  auto currentGlyphLinearStep = [&]() -> size_t {
+    const uint32_t f = ESP.getMaxAllocHeap();
+    if (f < 6 * 1024) return 2;
+    if (f < 10 * 1024) return 4;
+    if (f < 16 * 1024) return 8;
+    return 16;
+  };
+  auto currentSeedGlyphReserve = [&]() -> size_t {
+    const uint32_t f = ESP.getMaxAllocHeap();
+    if (f < 5 * 1024) return 0;
+    if (f < 7 * 1024) return std::min<size_t>(glyphsPerPage, 4);
+    if (f < 10 * 1024) return std::min<size_t>(glyphsPerPage, 8);
+    if (f < 14 * 1024) return std::min<size_t>(glyphsPerPage, 16);
+    return std::min<size_t>(glyphsPerPage, 32);
+  };
+
   // Every reserve() below this point is a single contiguous allocation that aborts the whole
   // process on failure under -fno-exceptions -- confirmed via a real device crash inside this
   // exact reserve, immediately after the *previous* page was pushed (which can itself burst
   // memory use during its own relocation). Check the request against free heap every time.
   auto reservePageGlyphs = [&](VerticalPage& p) {
-    const size_t requestBytes = glyphsPerPage * sizeof(VerticalGlyph);
     const uint32_t free = ESP.getMaxAllocHeap();
+    const size_t requestBytes = glyphsPerPage * sizeof(VerticalGlyph);
     if (free >= requestBytes + MIN_FREE_HEAP_FOR_RESERVE) {
       p.glyphs.reserve(glyphsPerPage);
       return;
     }
-    // Full-page reserve doesn't fit; seed with a small capacity so we don't
-    // start from capacity==0 and reallocate for every few glyphs.
-    // Start from a heap-adaptive size so we don't waste 4 KB on a 3 KB heap.
-    const uint32_t freeNow = ESP.getMaxAllocHeap();
-    static constexpr size_t kSeedCapsFull[] = {32, 16, 8, 4};
-    static constexpr size_t kSeedCapsLow[]  = {16, 8, 4};
-    static constexpr size_t kSeedCapsTiny[] = {8, 4};
-    const size_t* kSeedCaps = freeNow >= 8 * 1024 ? kSeedCapsFull :
-                              freeNow >= 4 * 1024 ? kSeedCapsLow :
-                              kSeedCapsTiny;
-    constexpr size_t kSeedCapsLenFull = 4;
-    constexpr size_t kSeedCapsLenLow  = 3;
-    constexpr size_t kSeedCapsLenTiny = 2;
-    size_t kSeedCapsLen = freeNow >= 8 * 1024 ? kSeedCapsLenFull :
-                          freeNow >= 4 * 1024 ? kSeedCapsLenLow :
-                          kSeedCapsLenTiny;
-    const uint32_t headroom = currentMinHeadroom();
-    for (size_t i = 0; i < kSeedCapsLen; i++) {
-      if (tryReserveSeed(p.glyphs, kSeedCaps[i], headroom, "page glyph seed")) return;
+    const size_t seed = currentSeedGlyphReserve();
+    const size_t seedBytes = seed * sizeof(VerticalGlyph);
+    if (seed > 0 && free >= seedBytes + currentGlyphMinHeadroom()) {
+      p.glyphs.reserve(seed);
+      LOG_DBG("VPT", "Seed page glyph reserve=%u (free=%u)", static_cast<unsigned>(seed), free);
+    } else {
+      LOG_ERR("VPT", "Skipping page glyphs reserve (%u bytes doesn't fit, free=%u); growing incrementally",
+              static_cast<unsigned>(requestBytes), free);
     }
-    LOG_ERR("VPT",
-            "Skipping page glyphs reserve (%u bytes doesn't fit, free=%u); no seed reserve fits",
-            static_cast<unsigned>(requestBytes), free);
   };
 
   // Skipping the reserve above is only safe if every individual push_back is ALSO guarded --
@@ -673,53 +690,42 @@ std::vector<VerticalPage> VerticalParsedText::layoutPages(void* ctx, PageReadyCa
   // Falling back to a small LINEAR growth step once doubling would be too big keeps each retry's
   // request small and roughly constant, so a later push (after some other allocation frees up) has
   // a real chance to succeed instead of being permanently walled off behind the same big ask.
-  auto pushGlyph = [this](std::vector<VerticalGlyph>& glyphs, const VerticalGlyph& g) {
+  auto pushGlyph = [&](std::vector<VerticalGlyph>& glyphs, const VerticalGlyph& g) {
     if (glyphs.size() < glyphs.capacity()) {
       glyphs.push_back(g);
       return true;
     }
-    const uint32_t SMALL_ALLOC_MARGIN = currentSmallAllocMargin();
-    const size_t MIN_HEADROOM = currentMinHeadroom();
-    const uint32_t freeHeap = ESP.getMaxAllocHeap();
+    const uint32_t free = ESP.getMaxAllocHeap();
+    const uint32_t growthMargin = currentGlyphGrowthMargin();
+    const uint32_t minHeadroom = currentGlyphMinHeadroom();
+    const size_t linearGrowthStep = currentGlyphLinearStep();
 
-    // Micro-step growth for tight heaps: prefer tiny increments over doubling.
-    const size_t step = freeHeap < 6 * 1024 ? 2 :
-                        freeHeap < 12 * 1024 ? 4 :
-                        freeHeap < 24 * 1024 ? 8 : 16;
-    const size_t stepCapacity = glyphs.capacity() + step;
-    const size_t stepBytes = stepCapacity * sizeof(VerticalGlyph);
-    if (freeHeap >= stepBytes + SMALL_ALLOC_MARGIN) {
-      glyphs.reserve(stepCapacity);
+    const size_t doubledCapacity = glyphs.capacity() == 0 ? 1 : glyphs.capacity() * 2;
+    const size_t doubledBytes = doubledCapacity * sizeof(VerticalGlyph);
+    if (free >= 16 * 1024 && free >= doubledBytes + growthMargin) {
+      glyphs.reserve(doubledCapacity);
       glyphs.push_back(g);
       return true;
     }
 
-    // Only try doubling when there's enough headroom.
-    if (freeHeap >= 8 * 1024) {
-      const size_t doubledCapacity = glyphs.capacity() == 0 ? 1 : glyphs.capacity() * 2;
-      const size_t doubledBytes = doubledCapacity * sizeof(VerticalGlyph);
-      if (freeHeap >= doubledBytes + SMALL_ALLOC_MARGIN) {
-        glyphs.reserve(doubledCapacity);
-        glyphs.push_back(g);
-        return true;
-      }
+    const size_t linearCapacity = glyphs.capacity() + linearGrowthStep;
+    const size_t linearBytes = linearCapacity * sizeof(VerticalGlyph);
+    if (free >= linearBytes + growthMargin) {
+      glyphs.reserve(linearCapacity);
+      glyphs.push_back(g);
+      return true;
     }
 
-    // Single-element growth with minimal margin.
+    // Last resort: single-element growth.
     const size_t singleCapacity = glyphs.capacity() + 1;
     const size_t singleBytes = singleCapacity * sizeof(VerticalGlyph);
-    if (freeHeap >= singleBytes + SMALL_ALLOC_MARGIN) {
-      glyphs.reserve(singleCapacity);
-      glyphs.push_back(g);
-      return true;
-    }
-    if (freeHeap >= singleBytes + MIN_HEADROOM) {
+    if (free >= singleBytes + minHeadroom) {
       glyphs.reserve(singleCapacity);
       glyphs.push_back(g);
       return true;
     }
 
-    LOG_DBG("VPT", "Low heap (%u bytes, need ~%u); deferring glyph to page break", freeHeap,
+    LOG_DBG("VPT", "Low heap (%u bytes, need ~%u); deferring glyph to page break", free,
             static_cast<unsigned>(singleBytes));
     return false;
   };
@@ -787,6 +793,22 @@ std::vector<VerticalPage> VerticalParsedText::layoutPages(void* ctx, PageReadyCa
     return false;
   };
 
+  // Rotated punctuation (brackets, chōonpu, dashes) is placed at the top-right
+  // corner of the cell by default.  Apply a small Y offset so they sit more
+  // naturally alongside upright glyphs—especially chōonpu which tend to float high.
+  auto rotatedPunctYOffset = [&](uint32_t cp) -> int {
+    int y = std::max(1, ascender / 3);
+    switch (cp) {
+      case 0x30FC: case 0x2015: case 0x2014:
+        y += std::max(2, cellPx / 6);
+        break;
+      case 0x300C: case 0x300D: case 0x300E: case 0x300F:
+        y += std::max(1, cellPx / 10);
+        break;
+    }
+    return y;
+  };
+
   auto placeUprightAt = [&](const PendingChar& pc, uint16_t col, uint16_t rowIdx) {
     VerticalGlyph g;
     g.codepoint = pc.codepoint;
@@ -798,11 +820,8 @@ std::vector<VerticalPage> VerticalParsedText::layoutPages(void* ctx, PageReadyCa
     g.emphasis = pc.emphasis;
 
     if (Kinsoku::needsVerticalRotation(pc.codepoint)) {
-      // Bracket / dash / chōonpu: keep one-cell layout, but mark as rotated
-      // punctuation so the renderer can center it by glyph metrics and apply
-      // opening/closing bracket flow-direction bias.
       g.x = static_cast<uint16_t>(columnLeftX(col));
-      g.y = static_cast<uint16_t>(rowIdx * cellPx);
+      g.y = static_cast<uint16_t>(rowIdx * cellPx + rotatedPunctYOffset(pc.codepoint));
       g.renderKind = VerticalGlyph::RotatedPunct;
       g.rubyText = pc.rubyText;
       if (!appendGlyphOrForcePage(g)) { everDroppedForHeap_ = true; return; }
@@ -1155,8 +1174,8 @@ std::vector<VerticalPage> VerticalParsedText::layoutPages(void* ctx, PageReadyCa
           g.y = static_cast<uint16_t>(gy);
           g.renderKind = VerticalGlyph::Upright;
           if (Kinsoku::needsVerticalRotation(pc.codepoint)) {
-            g.x = static_cast<uint16_t>(columnLeftX(prev.column) + cellPx - ascender);
-            g.y = static_cast<uint16_t>(g.row * cellPx);
+            g.x = static_cast<uint16_t>(columnLeftX(prev.column));
+            g.y = static_cast<uint16_t>(g.row * cellPx + rotatedPunctYOffset(pc.codepoint));
             g.renderKind = VerticalGlyph::RotatedPunct;
           }
           g.paragraphIndex = pc.paragraphIndex;
