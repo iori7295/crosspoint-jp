@@ -33,6 +33,20 @@ namespace {
 // rule table was still held resident (see Epub::load): its heap fragmentation made the layout's
 // stream reserve fail on long chapters, silently truncating them into sparse pages ON DISK.
 constexpr uint8_t VSECTION_FILE_VERSION = 59;
+
+// Helper to detect gaiji (external character) image paths.  Gaiji images are
+// small PNGs used for rare kanji not covered by the font; missing them should
+// not break the entire chapter build.  Returns true when the path suggests an
+// EPUB gaiji or external-character reference.
+bool isLikelyGaijiImagePath(const std::string& path) {
+  // Common EPUB gaiji path patterns.
+  if (path.find("/gaiji/") != std::string::npos) return true;
+  if (path.find("/外字/") != std::string::npos) return true;
+  // Some EPUBs put gaiji directly in OEBPF/gaiji*.png.
+  const size_t slash = path.rfind('/');
+  const std::string name = (slash != std::string::npos) ? path.substr(slash + 1) : path;
+  return name.rfind("gaiji", 0) == 0 || name.rfind("GAJI", 0) == 0 || name.rfind("外字", 0) == 0;
+}
 static constexpr uint16_t VSECTION_FLAG_PARTIAL = 0x0001;
 // Header layout: u8 version, i32 fontId, u16 viewportW, u16 viewportH, u16 pageCount, u32 indexOffset, u16 flags
 static constexpr uint32_t VSECTION_HEADER_PCOUNT_OFF = sizeof(uint8_t) + sizeof(int32_t) + sizeof(uint16_t) + sizeof(uint16_t);
@@ -828,7 +842,11 @@ struct LayoutPageSink final : ParagraphSink {
     flushText();
     VerticalPage pendingTail;
     if (layout.finalizePendingPage(pendingTail)) writeOne(pendingTail);
-    writeOne(makeImagePage(src));
+    VerticalPage imgPage = makeImagePage(src);
+    // Skip empty gaiji pages (low-heap image fallback) instead of writing
+    // a broken image page that corrupts the chapter cache.
+    if (imgPage.imagePath.empty()) return;
+    writeOne(imgPage);
   }
 
   static void writePageCallback(void* ctx, VerticalPage&& page) { static_cast<LayoutPageSink*>(ctx)->writeOne(page); }
@@ -948,13 +966,9 @@ struct LayoutPageSink final : ParagraphSink {
         needsExtraction = false;
       }
     }
+    const bool isGaiji = isLikelyGaijiImagePath(resolvedSrc);
+
     if (needsExtraction) {
-      // Extraction needs one contiguous 32KB block for the zip inflate window (InflateReader::
-      // init(true)) -- confirmed on a real device that this fails on chapters with both many
-      // images and dense text, where the font decompressor's hot-group buffer (regrown during
-      // this same chapter's column-fitting measurements) is still resident and competing for that
-      // headroom. Free it right before the allocation that actually needs it.
-      // releaseAllFontMemory() not available in crosspoint-reader 1.4.1 base.
       HalFile cachedFile;
       if (Storage.openFileForWrite("VSC", cachedPath, cachedFile)) {
         const bool extracted = epub.readItemContentsToStream(resolvedSrc, cachedFile, 4096);
@@ -963,6 +977,21 @@ struct LayoutPageSink final : ParagraphSink {
         if (!extracted) {
           LOG_ERR("VSC", "Failed to extract image %s; removing partial cache file", resolvedSrc.c_str());
           Storage.remove(cachedPath.c_str());
+          if (isGaiji) {
+            LOG_ERR("VSC", "Skipping gaiji image after extract failure: %s", resolvedSrc.c_str());
+            return VerticalPage{};
+          }
+        }
+      }
+    }
+
+    {
+      // Verify cache file exists and is non-empty before proceeding.
+      HalFile verifyFile;
+      if (!Storage.openFileForRead("VSC", cachedPath, verifyFile) || verifyFile.size() == 0) {
+        if (isGaiji) {
+          LOG_ERR("VSC", "Skipping gaiji image with missing/empty cache: %s", resolvedSrc.c_str());
+          return VerticalPage{};
         }
       }
     }
@@ -973,7 +1002,12 @@ struct LayoutPageSink final : ParagraphSink {
     int displayH = viewportHeight;
     bool rotated = false;
     ImageToFramebufferDecoder* decoder = ImageDecoderFactory::getDecoder(cachedPath);
-    if (decoder) {
+    if (!decoder) {
+      if (isGaiji) {
+        LOG_ERR("VSC", "Skipping gaiji image with no decoder: %s", resolvedSrc.c_str());
+        return VerticalPage{};
+      }
+    } else {
       ImageDimensions dims = {0, 0};
       if (decoder->getDimensions(cachedPath, dims) && dims.width > 0 && dims.height > 0) {
         const bool viewportIsPortrait = (viewportHeight > viewportWidth);
@@ -981,6 +1015,9 @@ struct LayoutPageSink final : ParagraphSink {
         rotated = (viewportIsPortrait == imageIsLandscape);
         displayW = dims.width;
         displayH = dims.height;
+      } else if (isGaiji) {
+        LOG_ERR("VSC", "Skipping gaiji image after dimension probe failure: %s", resolvedSrc.c_str());
+        return VerticalPage{};
       }
     }
 

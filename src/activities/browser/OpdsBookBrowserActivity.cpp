@@ -1,6 +1,7 @@
 #include "OpdsBookBrowserActivity.h"
 
 #include <Arduino.h>
+#include <FontCacheManager.h>
 #include <GfxRenderer.h>
 #include <HalStorage.h>
 #include <I18n.h>
@@ -40,10 +41,14 @@ Rect searchIconRect(const GfxRenderer& renderer) {
 bool contains(const Rect& rect, const int x, const int y) {
   return x >= rect.x && x < rect.x + rect.width && y >= rect.y && y < rect.y + rect.height;
 }
+void trimFontCaches(GfxRenderer& renderer) {
+  if (auto* fcm = renderer.getFontCacheManager()) fcm->clearCache();
+}
 }  // namespace
 
 void OpdsBookBrowserActivity::onEnter() {
   Activity::onEnter();
+  trimFontCaches(renderer);
 
   state = BrowserState::CHECK_WIFI;
   entries.clear();
@@ -62,6 +67,7 @@ void OpdsBookBrowserActivity::onEnter() {
 
 void OpdsBookBrowserActivity::onExit() {
   Activity::onExit();
+  trimFontCaches(renderer);
   entries.clear();
   navigationHistory.clear();
 
@@ -260,6 +266,7 @@ void OpdsBookBrowserActivity::render(RenderLock&&) {
 }
 
 void OpdsBookBrowserActivity::fetchFeed(const std::string& path) {
+  trimFontCaches(renderer);
   if (server.url.empty()) {
     state = BrowserState::ERROR;
     errorMessage = tr(STR_NO_SERVER_URL);

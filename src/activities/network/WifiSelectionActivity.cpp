@@ -1,5 +1,6 @@
 #include "WifiSelectionActivity.h"
 
+#include <FontCacheManager.h>
 #include <GfxRenderer.h>
 #include <HalClock.h>
 #include <I18n.h>
@@ -15,8 +16,15 @@
 #include "components/UITheme.h"
 #include "fontIds.h"
 
+namespace {
+void trimFontCaches(GfxRenderer& renderer) {
+  if (auto* fcm = renderer.getFontCacheManager()) fcm->clearCache();
+}
+}  // namespace
+
 void WifiSelectionActivity::onEnter() {
   Activity::onEnter();
+  trimFontCaches(renderer);
 
   // Load saved WiFi credentials - SD card operations need lock as we use SPI
   // for both
@@ -76,6 +84,7 @@ void WifiSelectionActivity::onEnter() {
 void WifiSelectionActivity::onExit() {
   Activity::onExit();
 
+  trimFontCaches(renderer);
   LOG_DBG("WIFI", "Free heap at onExit start: %d bytes", ESP.getFreeHeap());
 
   // Stop any ongoing WiFi scan
