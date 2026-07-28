@@ -1197,18 +1197,23 @@ bool VerticalSection::streamParseAndLayout(HalFile& out, const int fontId, const
       parseOk = false;
       break;
     }
+    // Stop early when the page budget is reached (incremental build).
+    if (sink.hitBudget) {
+      done = true;  // stop the loop, treat as success
+      break;
+    }
   } while (!done);
 
   htmlFile.close();
   destroyXmlParser(parser);
   Storage.remove(tmpHtmlPath.c_str());
 
-  if (!parseOk) return false;
+  if (!parseOk && !sink.hitBudget) return false;
 
   extractor.flushParagraph();
   sink.flushText(/*isFinalFlush=*/true);
 
-  if (sink.failed) return false;
+  if (sink.failed && !sink.hitBudget) return false;
 
   lastBuildDroppedForHeap_ = layout.everDroppedForHeap();
   LOG_INF("VSC", "streamParseAndLayout: %u ms", millis() - buildStartMs);
@@ -1322,9 +1327,6 @@ bool VerticalSection::buildSomeMore(int maxPages) {
 
   if (lastBuildDroppedForHeap_) {
     LOG_ERR("VSC", "Build dropped some glyphs on low heap; keeping partial cache for spine %d", spineIndex);
-    // Don't discard — a cache with a few missing glyphs is vastly better than
-    // no cache at all, and on a consistently tight device the rebuild loop
-    // (build → drop → discard → rebuild → ...) never converges.
   }
 
   build_->pagesAlreadyBuilt = static_cast<uint16_t>(pageOffsets_.size());
