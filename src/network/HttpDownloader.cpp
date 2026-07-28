@@ -75,10 +75,11 @@ HttpDownloader::DownloadError runGetInsecure(const std::string& url, const std::
 
   NetworkClientSecure* secure = new NetworkClientSecure();
   secure->setInsecure();
-  secure->setHandshakeTimeout(20);
+  secure->setHandshakeTimeout(30);
 
   HTTPClient http;
   http.begin(*secure, url.c_str());
+  http.setTimeout(HTTP_TIMEOUT_MS);
   http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
   http.addHeader("User-Agent", "CrossPoint-ESP32-" CROSSPOINT_VERSION);
 

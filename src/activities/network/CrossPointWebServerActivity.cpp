@@ -11,6 +11,7 @@
 
 #include "MappedInputManager.h"
 #include "NetworkModeSelectionActivity.h"
+#include "SdCardFontSystem.h"
 #include "SilentRestart.h"
 #include "WifiSelectionActivity.h"
 #include "activities/network/CalibreConnectActivity.h"
@@ -247,6 +248,12 @@ void CrossPointWebServerActivity::startAccessPoint() {
 
 void CrossPointWebServerActivity::startWebServer() {
   LOG_DBG("WEBACT", "Starting web server...");
+
+  // Unload SD card fonts to free heap for the web server stack, WebDAV handler,
+  // and concurrent client connections.  Fonts are not needed while serving files;
+  // they will be reloaded automatically after the next silent restart.
+  sdFontSystem.unloadFonts(renderer);
+  LOG_DBG("WEBACT", "Unloaded SD fonts, heap=%d", ESP.getFreeHeap());
 
   // Create the web server instance
   webServer.reset(new CrossPointWebServer());
