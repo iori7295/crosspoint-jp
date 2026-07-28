@@ -2,6 +2,7 @@
 
 #include <DNSServer.h>
 #include <ESPmDNS.h>
+#include <FontCacheManager.h>
 #include <GfxRenderer.h>
 #include <I18n.h>
 #include <WiFi.h>
@@ -63,6 +64,8 @@ int barsForRssi(int rssi, int currentBars) {
 void CrossPointWebServerActivity::onEnter() {
   Activity::onEnter();
 
+  // Free SD font caches so the web server has contiguous heap for TLS buffers.
+  if (auto* fcm = renderer.getFontCacheManager()) fcm->clearCache();
   LOG_DBG("WEBACT", "Free heap at onEnter: %d bytes", ESP.getFreeHeap());
 
   // Reset state

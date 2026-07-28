@@ -1321,9 +1321,10 @@ bool VerticalSection::buildSomeMore(int maxPages) {
   }
 
   if (lastBuildDroppedForHeap_) {
-    LOG_ERR("VSC", "Build dropped glyphs; discarding cache for spine %d", spineIndex);
-    abandonBuild();
-    return false;
+    LOG_ERR("VSC", "Build dropped some glyphs on low heap; keeping partial cache for spine %d", spineIndex);
+    // Don't discard — a cache with a few missing glyphs is vastly better than
+    // no cache at all, and on a consistently tight device the rebuild loop
+    // (build → drop → discard → rebuild → ...) never converges.
   }
 
   build_->pagesAlreadyBuilt = static_cast<uint16_t>(pageOffsets_.size());
