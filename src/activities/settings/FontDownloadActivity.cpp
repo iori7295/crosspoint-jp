@@ -78,7 +78,15 @@ bool FontDownloadActivity::fetchAndParseManifest() {
   // TLS buffers and the full JSON string in RAM simultaneously.
   static constexpr const char* MANIFEST_TMP = "/fonts_manifest.tmp";
 
-  auto result = HttpDownloader::downloadToFileInsecure(FONT_MANIFEST_URL, MANIFEST_TMP, nullptr);
+  // Retry up to 3 times; GitHub release CDN can be flaky from an ESP32.
+  static constexpr int MAX_RETRIES = 3;
+  auto result = HttpDownloader::HTTP_ERROR;
+  for (int attempt = 1; attempt <= MAX_RETRIES; ++attempt) {
+    result = HttpDownloader::downloadToFileInsecure(FONT_MANIFEST_URL, MANIFEST_TMP, nullptr);
+    if (result == HttpDownloader::OK) break;
+    LOG_DBG("FONT", "Manifest download attempt %d/%d failed", attempt, MAX_RETRIES);
+    if (attempt < MAX_RETRIES) delay(1000);
+  }
   if (result != HttpDownloader::OK) {
     LOG_ERR("FONT", "Failed to fetch manifest from %s", FONT_MANIFEST_URL);
     errorMessage_ = "Failed to fetch font list";

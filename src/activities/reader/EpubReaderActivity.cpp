@@ -1186,7 +1186,12 @@ void EpubReaderActivity::render(RenderLock&& lock) {
               break;
             }
           }
-          if (verticalSection_->pageCount > 0) return true;
+          if (verticalSection_->pageCount > 0) {
+            // Finalize the cache and close the write handle so getPage() can
+            // read the file from another handle without stale-cache issues.
+            verticalSection_->suspendBuild();
+            return true;
+          }
         }
         // Fallback: synchronous full build.
         LOG_DBG("ERS", "Incremental build failed or produced no pages; falling back to full build");

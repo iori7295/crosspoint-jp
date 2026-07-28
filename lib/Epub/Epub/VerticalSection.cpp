@@ -1328,6 +1328,9 @@ bool VerticalSection::buildSomeMore(int maxPages) {
 
   const bool ok = streamParseAndLayout(build_->out, build_->fontId, build_->viewportWidth,
                                         build_->viewportHeight, pagesToSkip, pageBudget, &hitPageBudget);
+  // Flush so a subsequent read via getPage() sees the data even while the
+  // write handle stays open for incremental build continuation.
+  build_->out.flush();
   loan.end();
 
   if (!ok) {
