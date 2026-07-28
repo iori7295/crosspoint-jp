@@ -34,7 +34,6 @@ class VerticalSection {
   mutable int loadedPageIndex_ = -1;
 
   bool lastBuildDroppedForHeap_ = false;
-  bool buildInProgress_ = false;
   bool lowMemMode_ = false;
   bool partial_ = false;
 
@@ -60,8 +59,8 @@ class VerticalSection {
   // Incremental build lifecycle.
   bool startBuild(int fontId, uint16_t viewportWidth, uint16_t viewportHeight);
   bool buildSomeMore(int maxPages);
-  bool isBuilding() const { return buildInProgress_; }
-  bool isBuildComplete() const { return !buildInProgress_; }
+  bool isBuilding() const { return build_ != nullptr; }
+  bool isBuildComplete() const { return build_ == nullptr; }
   bool isPartial() const { return partial_; }
   void suspendBuild();
   void abandonBuild();

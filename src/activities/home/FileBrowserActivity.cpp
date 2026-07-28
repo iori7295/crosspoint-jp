@@ -6,6 +6,7 @@
 #include <HalStorage.h>
 #include <I18n.h>
 #include <Memory.h>
+#include <Utf8.h>
 
 #include <algorithm>
 
@@ -20,6 +21,29 @@
 namespace {
 constexpr unsigned long GO_HOME_MS = 1000;
 constexpr size_t NAME_BUFFER_SIZE = 500;
+
+// Scan a string and replace any bytes that aren't valid UTF-8 lead or continuation
+// bytes with '?'.  File names from the SD card FAT filesystem may contain raw bytes
+// that the VFAT-UTF-16 conversion didn't handle correctly.
+void sanitizeUtf8InPlace(std::string& s) {
+  for (size_t i = 0; i < s.size();) {
+    const auto c = static_cast<unsigned char>(s[i]);
+    size_t expected = 0;
+    if (c < 0x80) { ++i; continue; }
+    else if (c >= 0xF5) { s[i] = '?'; ++i; continue; }
+    else if (c >= 0xF0) expected = 4;
+    else if (c >= 0xE0) expected = 3;
+    else if (c >= 0xC2) expected = 2;
+    else { s[i] = '?'; ++i; continue; }
+    // Check continuation bytes
+    bool ok = true;
+    for (size_t j = 1; j < expected && i + j < s.size(); ++j) {
+      if ((static_cast<unsigned char>(s[i + j]) & 0xC0) != 0x80) ok = false;
+    }
+    if (ok && i + expected <= s.size()) { i += expected; continue; }
+    s[i] = '?'; ++i;
+  }
+}
 }  // namespace
 
 void FileBrowserActivity::loadFiles() {
@@ -46,9 +70,13 @@ void FileBrowserActivity::loadFiles() {
     }
 
     if (file.isDirectory()) {
-      files.emplace_back(std::string(fileNameBuffer.get()) + "/");
+      auto name = std::string(fileNameBuffer.get()) + "/";
+      sanitizeUtf8InPlace(name);
+      files.emplace_back(std::move(name));
     } else {
-      std::string_view filename{fileNameBuffer.get()};
+      auto name = std::string(fileNameBuffer.get());
+      sanitizeUtf8InPlace(name);
+      std::string_view filename{name};
       if (mode == Mode::PickFirmware) {
         // Firmware picker: only show .bin files.
         if (FsHelpers::checkFileExtension(filename, ".bin")) {

@@ -1040,7 +1040,9 @@ struct VerticalSection::BuildState {
   uint16_t viewportWidth = 0;
   uint16_t viewportHeight = 0;
   HalFile out;
+  HalFile parseFile;          // pre-extracted HTML file (open across calls)
   std::string htmlPath;
+  uint32_t htmlFilePos = 0;   // byte offset in parseFile for resume
   std::vector<uint32_t> pageOffsets;
   uint16_t pagesAlreadyBuilt = 0;
 };
@@ -1174,6 +1176,14 @@ bool VerticalSection::streamParseAndLayout(HalFile& out, const int fontId, const
     Storage.remove(tmpHtmlPath.c_str());
     return false;
   }
+  // Resume from saved file position (buildSomeMore continuation).
+  if (build_ && build_->htmlFilePos > 0) {
+    if (!htmlFile.seekSet(build_->htmlFilePos)) {
+      LOG_ERR("VSC", "Failed to seek to resume position %u", build_->htmlFilePos);
+    } else {
+      LOG_DBG("VSC", "Resuming HTML parse from byte offset %u", build_->htmlFilePos);
+    }
+  }
 
   bool parseOk = true;
   int done;
@@ -1199,7 +1209,8 @@ bool VerticalSection::streamParseAndLayout(HalFile& out, const int fontId, const
     }
     // Stop early when the page budget is reached (incremental build).
     if (sink.hitBudget) {
-      done = true;  // stop the loop, treat as success
+      if (build_) build_->htmlFilePos = static_cast<uint32_t>(htmlFile.position());
+      done = true;
       break;
     }
   } while (!done);
@@ -1342,7 +1353,7 @@ bool VerticalSection::buildSomeMore(int maxPages) {
     build_->out.close();
     Storage.remove(filePath.c_str());
     if (!build_->htmlPath.empty()) Storage.remove(build_->htmlPath.c_str());
-    buildInProgress_ = false; build_.reset();
+    build_.reset();
     partial_ = false;
     return true;
   }
@@ -1361,7 +1372,7 @@ bool VerticalSection::buildSomeMore(int maxPages) {
   build_->out.close();
   Storage.remove(build_->htmlPath.c_str());
   LOG_DBG("VSC", "Cached %u vertical pages (complete)", pageCount);
-  buildInProgress_ = false; build_.reset();
+  build_.reset();
   partial_ = false;
   return true;
 }
@@ -1374,7 +1385,7 @@ void VerticalSection::abandonBuild() {
   Storage.remove(filePath.c_str());
   pageOffsets_.clear();
   pageCount = 0;
-  buildInProgress_ = false; build_.reset();
+  build_.reset();
   partial_ = false;
 }
 
@@ -1393,7 +1404,7 @@ void VerticalSection::suspendBuild() {
   }
   build_->out.close();
   // Keep the temp HTML file for cross-session resume (startBuild reuses it).
-  buildInProgress_ = false; build_.reset();
+  build_.reset();
   partial_ = true;
   LOG_DBG("VSC", "Suspended vertical build at %u pages (HTML kept for resume)", static_cast<unsigned>(pageCount));
 }
