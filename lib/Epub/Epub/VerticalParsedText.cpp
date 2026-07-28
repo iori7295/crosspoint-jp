@@ -768,66 +768,43 @@ std::vector<VerticalPage> VerticalParsedText::layoutPages(void* ctx, PageReadyCa
     }
   };
 
-  // Try pushGlyph; if the page's glyph vector can't grow on a tight heap, force a
-  // page break (flush the current page to free its backing allocations) and retry.
-  // Silently dropping glyphs produces sparse/corrupt pages that are worse than a
-  // slightly early page break.  If the retry also fails the build must abort.
-  // CRITICAL: only retry ONCE to avoid an infinite loop when maxAlloc is so low
-  // (< 3 KB) that even a fresh page can't reserve glyph storage.
+  // Track consecutive forced page breaks within one layout pass to detect
+  // the ultra-low-heap spiral where every new page also fails (maxAlloc < 5 KB),
+  // causing sparse/near-empty pages.  After one forced break skip further
+  // page breaks and drop glyphs directly instead.
+  int forcedBreakCount_ = 0;
+
   auto appendGlyphOrForcePage = [&](const VerticalGlyph& g) -> bool {
     if (pushGlyph(page.glyphs, g)) return true;
 
+    // On ultra-low heap, a forced page break creates a fresh page that also
+    // can't grow — the result is a cascade of nearly-empty pages.  Skip the
+    // break entirely and drop this one glyph.
+    if (ESP.getMaxAllocHeap() < 6 * 1024 || forcedBreakCount_ > 0) {
+      LOG_ERR("VPT", "Ultra-low heap (%u); dropping one glyph directly (free=%u)",
+              ESP.getMaxAllocHeap(), ESP.getMaxAllocHeap());
+      everDroppedForHeap_ = true;
+      return true;
+    }
+
     LOG_DBG("VPT", "Forcing page break to avoid glyph drop (free=%u)", ESP.getMaxAllocHeap());
+    forcedBreakCount_++;
     column = columnsPerPage;
     finalizePageIfNeeded();
 
-    // Seed the fresh page with tiny capacity so the retry enters the fast path.
     if (page.glyphs.capacity() == 0) {
       tryReserveSeed(page.glyphs, 4, currentMinHeadroom(), "forced-break glyph seed");
     }
 
-    if (pushGlyph(page.glyphs, g)) return true;
+    if (pushGlyph(page.glyphs, g)) {
+      forcedBreakCount_ = 0;
+      return true;
+    }
 
-    // Forward progress is better than aborting the whole layout.  In the
-    // ultra-low-heap band this is typically one pathological glyph that
-    // still cannot seed/grow even after a forced break.
-    LOG_ERR("VPT", "OOM after one forced page break (free=%u); dropping one glyph and continuing",
+    LOG_ERR("VPT", "OOM after one forced page break (free=%u); dropping one glyph",
             ESP.getMaxAllocHeap());
     everDroppedForHeap_ = true;
     return true;
-  };
-
-  // Rotated punctuation (brackets, chōonpu, dashes) positioning.
-  // The default cell-top-right placement looks slightly too high and too
-  // right — move them down and left for a more natural vertical flow.
-  auto isBracketLikeRotatedPunct = [](uint32_t cp) {
-    switch (cp) {
-      case 0x300C: case 0x300D: case 0x300E: case 0x300F:
-      case 0x3010: case 0x3011: case 0x3014: case 0x3015:
-      case 0xFF08: case 0xFF09:
-        return true;
-      default: return false;
-    }
-  };
-  auto isDashLikeRotatedPunct = [](uint32_t cp) {
-    switch (cp) {
-      case 0x30FC: case 0x2014: case 0x2015: case 0x2500:
-        return true;
-      default: return false;
-    }
-  };
-  auto rotatedPunctX = [&](uint16_t col, uint32_t cp) -> uint16_t {
-    int x = columnLeftX(col);
-    x -= std::max(1, cellPx / 12);
-    if (isDashLikeRotatedPunct(cp)) x -= std::max(1, cellPx / 16);
-    return static_cast<uint16_t>(std::max(0, x));
-  };
-  auto rotatedPunctY = [&](uint16_t rowIdx, uint32_t cp) -> uint16_t {
-    int y = rowIdx * cellPx;
-    y += std::max(1, cellPx / 10);
-    if (isBracketLikeRotatedPunct(cp)) y += std::max(1, cellPx / 14);
-    if (isDashLikeRotatedPunct(cp))   y += std::max(1, cellPx / 12);
-    return static_cast<uint16_t>(std::max(0, y));
   };
 
   auto placeUprightAt = [&](const PendingChar& pc, uint16_t col, uint16_t rowIdx) {
@@ -841,8 +818,12 @@ std::vector<VerticalPage> VerticalParsedText::layoutPages(void* ctx, PageReadyCa
     g.emphasis = pc.emphasis;
 
     if (Kinsoku::needsVerticalRotation(pc.codepoint)) {
-      g.x = rotatedPunctX(col, pc.codepoint);
-      g.y = rotatedPunctY(rowIdx, pc.codepoint);
+      // Brackets, chōonpu, dashes: same cell-top-right anchor as upright text
+      // (columnLeftX(col), rowIdx*cellPx + ascender).  The renderer's RotatedPunct
+      // centering formula aligns the rotated glyph inside the cell using glyph
+      // metrics, so no extra X/Y tuning is needed — match upright baseline.
+      g.x = static_cast<uint16_t>(columnLeftX(col));
+      g.y = static_cast<uint16_t>(rowIdx * cellPx + ascender);
       g.renderKind = VerticalGlyph::RotatedPunct;
       g.rubyText = pc.rubyText;
       if (!appendGlyphOrForcePage(g)) { everDroppedForHeap_ = true; return; }
@@ -1195,8 +1176,8 @@ std::vector<VerticalPage> VerticalParsedText::layoutPages(void* ctx, PageReadyCa
           g.y = static_cast<uint16_t>(gy);
           g.renderKind = VerticalGlyph::Upright;
           if (Kinsoku::needsVerticalRotation(pc.codepoint)) {
-            g.x = rotatedPunctX(prev.column, pc.codepoint);
-            g.y = rotatedPunctY(g.row, pc.codepoint);
+            g.x = static_cast<uint16_t>(columnLeftX(prev.column));
+            g.y = static_cast<uint16_t>(g.row * cellPx + ascender);
             g.renderKind = VerticalGlyph::RotatedPunct;
           }
           g.paragraphIndex = pc.paragraphIndex;
