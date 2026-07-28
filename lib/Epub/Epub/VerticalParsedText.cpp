@@ -788,25 +788,46 @@ std::vector<VerticalPage> VerticalParsedText::layoutPages(void* ctx, PageReadyCa
 
     if (pushGlyph(page.glyphs, g)) return true;
 
-    LOG_ERR("VPT", "OOM after one forced page break (free=%u); aborting layout", ESP.getMaxAllocHeap());
+    // Forward progress is better than aborting the whole layout.  In the
+    // ultra-low-heap band this is typically one pathological glyph that
+    // still cannot seed/grow even after a forced break.
+    LOG_ERR("VPT", "OOM after one forced page break (free=%u); dropping one glyph and continuing",
+            ESP.getMaxAllocHeap());
     everDroppedForHeap_ = true;
-    return false;
+    return true;
   };
 
-  // Rotated punctuation (brackets, chōonpu, dashes) is placed at the top-right
-  // corner of the cell by default.  Apply a small Y offset so they sit more
-  // naturally alongside upright glyphs—especially chōonpu which tend to float high.
-  auto rotatedPunctYOffset = [&](uint32_t cp) -> int {
-    int y = std::max(1, ascender / 3);
+  // Rotated punctuation (brackets, chōonpu, dashes) positioning.
+  // The default cell-top-right placement looks slightly too high and too
+  // right — move them down and left for a more natural vertical flow.
+  auto isBracketLikeRotatedPunct = [](uint32_t cp) {
     switch (cp) {
-      case 0x30FC: case 0x2015: case 0x2014:
-        y += std::max(2, cellPx / 6);
-        break;
       case 0x300C: case 0x300D: case 0x300E: case 0x300F:
-        y += std::max(1, cellPx / 10);
-        break;
+      case 0x3010: case 0x3011: case 0x3014: case 0x3015:
+      case 0xFF08: case 0xFF09:
+        return true;
+      default: return false;
     }
-    return y;
+  };
+  auto isDashLikeRotatedPunct = [](uint32_t cp) {
+    switch (cp) {
+      case 0x30FC: case 0x2014: case 0x2015: case 0x2500:
+        return true;
+      default: return false;
+    }
+  };
+  auto rotatedPunctX = [&](uint16_t col, uint32_t cp) -> uint16_t {
+    int x = columnLeftX(col);
+    x -= std::max(1, cellPx / 12);
+    if (isDashLikeRotatedPunct(cp)) x -= std::max(1, cellPx / 16);
+    return static_cast<uint16_t>(std::max(0, x));
+  };
+  auto rotatedPunctY = [&](uint16_t rowIdx, uint32_t cp) -> uint16_t {
+    int y = rowIdx * cellPx;
+    y += std::max(1, cellPx / 10);
+    if (isBracketLikeRotatedPunct(cp)) y += std::max(1, cellPx / 14);
+    if (isDashLikeRotatedPunct(cp))   y += std::max(1, cellPx / 12);
+    return static_cast<uint16_t>(std::max(0, y));
   };
 
   auto placeUprightAt = [&](const PendingChar& pc, uint16_t col, uint16_t rowIdx) {
@@ -820,8 +841,8 @@ std::vector<VerticalPage> VerticalParsedText::layoutPages(void* ctx, PageReadyCa
     g.emphasis = pc.emphasis;
 
     if (Kinsoku::needsVerticalRotation(pc.codepoint)) {
-      g.x = static_cast<uint16_t>(columnLeftX(col));
-      g.y = static_cast<uint16_t>(rowIdx * cellPx + rotatedPunctYOffset(pc.codepoint));
+      g.x = rotatedPunctX(col, pc.codepoint);
+      g.y = rotatedPunctY(rowIdx, pc.codepoint);
       g.renderKind = VerticalGlyph::RotatedPunct;
       g.rubyText = pc.rubyText;
       if (!appendGlyphOrForcePage(g)) { everDroppedForHeap_ = true; return; }
@@ -1174,8 +1195,8 @@ std::vector<VerticalPage> VerticalParsedText::layoutPages(void* ctx, PageReadyCa
           g.y = static_cast<uint16_t>(gy);
           g.renderKind = VerticalGlyph::Upright;
           if (Kinsoku::needsVerticalRotation(pc.codepoint)) {
-            g.x = static_cast<uint16_t>(columnLeftX(prev.column));
-            g.y = static_cast<uint16_t>(g.row * cellPx + rotatedPunctYOffset(pc.codepoint));
+            g.x = rotatedPunctX(prev.column, pc.codepoint);
+            g.y = rotatedPunctY(g.row, pc.codepoint);
             g.renderKind = VerticalGlyph::RotatedPunct;
           }
           g.paragraphIndex = pc.paragraphIndex;

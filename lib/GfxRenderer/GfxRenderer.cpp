@@ -238,7 +238,11 @@ int GfxRenderer::resolveTextFontId(const int fontId, const char* text, const Epd
     // Latin/symbol strings the built-in UI fonts already cover are left
     // untouched, and a partial-coverage fallback (e.g. kana-only) is not worth
     // dragging the whole string into for glyphs it would also miss.
-    if (utf8IsCjkCodepoint(cp) && !primary.hasCodepoint(cp, style) && fallback.hasCodepoint(cp, style)) {
+    // File / title strings often contain non-CJK punctuation such as
+    // U+2014/U+2015 dashes or other separators.  Restricting fallback
+    // to CJK-only makes those characters disappear or turn into tofu
+    // in list UIs even though the SD fallback font can render them.
+    if (!primary.hasCodepoint(cp, style) && fallback.hasCodepoint(cp, style)) {
       return fallbackFontId;
     }
   }
