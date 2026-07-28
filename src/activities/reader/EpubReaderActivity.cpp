@@ -1206,7 +1206,18 @@ void EpubReaderActivity::render(RenderLock&& lock) {
         }
         if (checkEmptyVerticalSpine()) return;
       } else {
-        LOG_DBG("ERS", "Vertical cache found, skipping build...");
+        LOG_DBG("ERS", "Vertical %s loaded: %d pages",
+                verticalSection_->isPartial() ? "partial cache" : "complete cache",
+                verticalSection_->pageCount);
+        // Resume partial build in background: startBuild reuses the temp HTML
+        // file left by the previous session's suspendBuild.
+        if (verticalSection_->isPartial() && !verticalSection_->isBuilding()) {
+          LOG_DBG("ERS", "Resuming partial vertical build for spine %d", currentSpineIndex);
+          if (!verticalSection_->startBuild(fontId, viewportWidth, viewportHeight)) {
+            LOG_ERR("ERS", "Failed to resume partial vertical build");
+            // Non-fatal: the partial cache is still readable.
+          }
+        }
         if (checkEmptyVerticalSpine()) return;
       }
       LOG_DBG("ERS", "Vertical section loaded: %d pages, free heap=%u",

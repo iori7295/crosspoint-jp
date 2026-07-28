@@ -1369,7 +1369,8 @@ bool VerticalSection::buildSomeMore(int maxPages) {
 void VerticalSection::abandonBuild() {
   if (!build_) return;
   build_->out.close();
-  if (!build_->htmlPath.empty()) Storage.remove(build_->htmlPath.c_str());
+  // Keep the temp HTML for cross-session resume if the cache file was partial.
+  // Only delete the output .bin (which is incomplete).
   Storage.remove(filePath.c_str());
   pageOffsets_.clear();
   pageCount = 0;
@@ -1390,14 +1391,11 @@ void VerticalSection::suspendBuild() {
     abandonBuild();
     return;
   }
-  const std::string htmlPath = build_->htmlPath;
   build_->out.close();
-  if (!htmlPath.empty() && Storage.exists(htmlPath.c_str())) {
-    Storage.remove(htmlPath.c_str());
-  }
+  // Keep the temp HTML file for cross-session resume (startBuild reuses it).
   buildInProgress_ = false; build_.reset();
   partial_ = true;
-  LOG_DBG("VSC", "Suspended vertical build at %u pages", static_cast<unsigned>(pageCount));
+  LOG_DBG("VSC", "Suspended vertical build at %u pages (HTML kept for resume)", static_cast<unsigned>(pageCount));
 }
 
 uint16_t VerticalSection::estimatedTotalPages() const {

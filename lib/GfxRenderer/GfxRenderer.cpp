@@ -242,6 +242,8 @@ int GfxRenderer::resolveTextFontId(const int fontId, const char* text, const Epd
     // U+2014/U+2015 dashes or other separators.  Restricting fallback
     // to CJK-only makes those characters disappear or turn into tofu
     // in list UIs even though the SD fallback font can render them.
+    // U+FFFD (replacement character) always stays in the primary font.
+    if (cp == 0xFFFD) return fontId;
     if (!primary.hasCodepoint(cp, style) && fallback.hasCodepoint(cp, style)) {
       return fallbackFontId;
     }
