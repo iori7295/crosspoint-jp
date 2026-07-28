@@ -780,7 +780,7 @@ std::vector<VerticalPage> VerticalParsedText::layoutPages(void* ctx, PageReadyCa
     // On ultra-low heap, a forced page break creates a fresh page that also
     // can't grow — the result is a cascade of nearly-empty pages.  Skip the
     // break entirely and drop this one glyph.
-    if (ESP.getMaxAllocHeap() < 6 * 1024 || forcedBreakCount_ > 0) {
+    if (ESP.getMaxAllocHeap() < 2500 || forcedBreakCount_ > 0) {
       LOG_ERR("VPT", "Ultra-low heap (%u); dropping one glyph directly (free=%u)",
               ESP.getMaxAllocHeap(), ESP.getMaxAllocHeap());
       everDroppedForHeap_ = true;

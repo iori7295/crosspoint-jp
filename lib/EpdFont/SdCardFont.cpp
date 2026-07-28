@@ -1188,9 +1188,12 @@ void SdCardFont::mergeIntoAdvanceTable(uint8_t styleIdx, const AdvanceEntry* sor
         (ESP.getMaxAllocHeap() > 2048)
             ? static_cast<uint32_t>((ESP.getMaxAllocHeap() - 2048) / sizeof(AdvanceEntry))
             : 0;
-    if (freeSlots <= oldSize) {
-      LOG_DBG("SDCF", "mergeIntoAdvanceTable: skip (freeCap=%u <= old=%u, new=%u, style=%u)",
-              freeSlots, oldSize, newCount, styleIdx);
+    // We need mergedCap entries for the merged table.  The old table will be
+    // freed, so the comparison is against the NEW size, not oldSize.
+    // Only skip when even the new entries alone can't fit (unlikely for N=1).
+    if (freeSlots < newCount) {
+      LOG_DBG("SDCF", "mergeIntoAdvanceTable: skip (freeCap=%u < new=%u, style=%u)",
+              freeSlots, newCount, styleIdx);
       return;
     }
     if (mergedCap > freeSlots) {
