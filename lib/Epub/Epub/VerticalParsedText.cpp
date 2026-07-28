@@ -818,12 +818,11 @@ std::vector<VerticalPage> VerticalParsedText::layoutPages(void* ctx, PageReadyCa
     g.emphasis = pc.emphasis;
 
     if (Kinsoku::needsVerticalRotation(pc.codepoint)) {
-      // Brackets, chōonpu, dashes: same cell-top-right anchor as upright text
-      // (columnLeftX(col), rowIdx*cellPx + ascender).  The renderer's RotatedPunct
-      // centering formula aligns the rotated glyph inside the cell using glyph
-      // metrics, so no extra X/Y tuning is needed — match upright baseline.
+      // Brackets, chōonpu, dashes: place at cell top-left and let the renderer's
+      // centering formula (drawTextRotated90CCW) align the rotated glyph inside
+      // the cell using glyph metrics.  No extra X/Y tuning needed.
       g.x = static_cast<uint16_t>(columnLeftX(col));
-      g.y = static_cast<uint16_t>(rowIdx * cellPx + ascender);
+      g.y = static_cast<uint16_t>(rowIdx * cellPx);
       g.renderKind = VerticalGlyph::RotatedPunct;
       g.rubyText = pc.rubyText;
       if (!appendGlyphOrForcePage(g)) { everDroppedForHeap_ = true; return; }
@@ -1177,7 +1176,7 @@ std::vector<VerticalPage> VerticalParsedText::layoutPages(void* ctx, PageReadyCa
           g.renderKind = VerticalGlyph::Upright;
           if (Kinsoku::needsVerticalRotation(pc.codepoint)) {
             g.x = static_cast<uint16_t>(columnLeftX(prev.column));
-            g.y = static_cast<uint16_t>(g.row * cellPx + ascender);
+            g.y = static_cast<uint16_t>(g.row * cellPx);
             g.renderKind = VerticalGlyph::RotatedPunct;
           }
           g.paragraphIndex = pc.paragraphIndex;

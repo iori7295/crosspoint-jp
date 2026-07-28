@@ -652,15 +652,15 @@ struct LayoutPageSink final : ParagraphSink {
 
   static size_t currentChunkCharBudget() {
     const uint32_t m = ESP.getMaxAllocHeap();
-    if (m < 8 * 1024) return 8;
+    if (m < 12 * 1024) return 8;
     if (m < 16 * 1024) return 12;
-    if (m < 24 * 1024) return 32;
+    if (m < 24 * 1024) return 24;
     if (m < 48 * 1024) return 48;
     return BATCH_CHARS;
   }
   static size_t currentChunkByteBudget() {
     const uint32_t m = ESP.getMaxAllocHeap();
-    if (m < 8 * 1024) return 128;
+    if (m < 12 * 1024) return 128;
     if (m < 16 * 1024) return 192;
     if (m < 24 * 1024) return 384;
     if (m < 48 * 1024) return 512;
@@ -668,19 +668,19 @@ struct LayoutPageSink final : ParagraphSink {
   }
   static size_t currentRunSliceChars() {
     const uint32_t m = ESP.getMaxAllocHeap();
-    if (m < 8 * 1024) return 12;
-    if (m < 16 * 1024) return 16;
-    if (m < 24 * 1024) return 32;
+    if (m < 12 * 1024) return 8;
+    if (m < 16 * 1024) return 12;
+    if (m < 24 * 1024) return 24;
     if (m < 48 * 1024) return 48;
     return 96;
   }
   static size_t currentRubyByteLimit() {
     const uint32_t m = ESP.getMaxAllocHeap();
-    if (m < 8 * 1024) return 96;
-    if (m < 16 * 1024) return 128;
-    if (m < 24 * 1024) return 256;
-    if (m < 48 * 1024) return 384;
-    return 768;
+    if (m < 12 * 1024) return 48;
+    if (m < 16 * 1024) return 64;
+    if (m < 24 * 1024) return 128;
+    if (m < 48 * 1024) return 192;
+    return 384;
   }
 
   LayoutPageSink(VerticalParsedText& layout, HalFile& out, std::vector<uint32_t>& pageOffsets, Epub& epub,
