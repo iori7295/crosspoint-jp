@@ -1071,7 +1071,9 @@ static bool finalizeVerticalCache(HalFile& file, const std::vector<uint32_t>& pa
 VerticalSection::VerticalSection(const std::shared_ptr<Epub>& epub, int spineIndex, GfxRenderer& renderer)
     : epub(epub), spineIndex(spineIndex), renderer(renderer),
       filePath(epub->getCachePath() + "/vsections/" + std::to_string(spineIndex) + ".bin") {}
-VerticalSection::~VerticalSection() = default;
+VerticalSection::~VerticalSection() { suspendBuild(); }
+
+static std::string binTmpPath(const std::string& fp) { return fp + ".part"; }
 
 // Write the page-offset index and patch the header pageCount field.
 static bool patchVerticalCacheHeader(HalFile& file, uint16_t pageCount, uint32_t indexOffset, uint16_t flags) {
@@ -1132,8 +1134,11 @@ bool VerticalSection::startBuild(const int fontId, const uint16_t viewportWidth,
     return false;
   }
 
-  // Open the output cache file and write the placeholder header.
-  if (!Storage.openFileForWrite("VSC", filePath, bs->out)) {
+  // Write to a temp .part file so the existing .bin stays readable during
+  // the build (getPage() can still serve previously cached pages).  On
+  // finalize or suspend the .part is promoted to .bin via rename.
+  const std::string tmpPath = binTmpPath(filePath);
+  if (!Storage.openFileForWrite("VSC", tmpPath, bs->out)) {
     return false;
   }
   serialization::writePod(bs->out, VSECTION_FILE_VERSION);
@@ -1221,7 +1226,7 @@ bool VerticalSection::startBuild(const int fontId, const uint16_t viewportWidth,
 }
 
 bool VerticalSection::buildSomeMore(int maxPages) {
-  if (!build_) return true;
+  if (!build_) return false;
 
   GfxRenderer::FrameBufferLoan loan(renderer);
 
@@ -1284,7 +1289,7 @@ bool VerticalSection::buildSomeMore(int maxPages) {
     const auto href = epub ? epub->getSpineItem(spineIndex).href : std::string();
     LOG_DBG("VSC", "No renderable vertical pages for spine %d: %s", spineIndex, href.c_str());
     build_->out.close();
-    Storage.remove(filePath.c_str());
+    Storage.remove(binTmpPath(filePath).c_str());
     build_.reset();
     partial_ = false;
     return true;
@@ -1296,13 +1301,17 @@ bool VerticalSection::buildSomeMore(int maxPages) {
     return true;
   }
 
-  // EOF reached: finalize cache.
+  // EOF reached: finalize cache and promote .part → .bin.
   if (!finalizeVerticalCache(build_->out, pageOffsets_, pageCount, 0)) {
     abandonBuild();
     return false;
   }
   build_->out.close();
   build_->htmlFile.close();
+  const std::string tmpPath = binTmpPath(filePath);
+  if (!Storage.rename(tmpPath.c_str(), filePath.c_str())) {
+    LOG_ERR("VSC", "Failed to promote %s → %s", tmpPath.c_str(), filePath.c_str());
+  }
   Storage.remove(build_->htmlPath.c_str());
   LOG_DBG("VSC", "Cached %u vertical pages (complete)", pageCount);
   build_.reset();
@@ -1313,15 +1322,18 @@ bool VerticalSection::buildSomeMore(int maxPages) {
 void VerticalSection::abandonBuild() {
   if (!build_) return;
   build_->out.close();
-  // Keep the temp HTML for cross-session resume if the cache file was partial.
-  // Only delete the output .bin (which is incomplete).
-  Storage.remove(filePath.c_str());
+  Storage.remove(binTmpPath(filePath).c_str());
+  // If there was no good .bin yet, drop the cache dir too so a future
+  // load doesn't pick up a stale partial from a previous session.
+  if (!Storage.exists(filePath.c_str())) {
+    Storage.remove(filePath.c_str());
+  }
+  Storage.remove(build_->htmlPath.c_str());
   pageOffsets_.clear();
   pageCount = 0;
   build_.reset();
   partial_ = false;
 }
-
 void VerticalSection::suspendBuild() {
   if (!build_) return;
   if (pageOffsets_.empty()) {
@@ -1336,10 +1348,14 @@ void VerticalSection::suspendBuild() {
     return;
   }
   build_->out.close();
-  // Keep the temp HTML file for cross-session resume (startBuild reuses it).
+  // Promote .part → .bin so the partial survives on disk.
+  const std::string tmpPath = binTmpPath(filePath);
+  Storage.rename(tmpPath.c_str(), filePath.c_str());
+  // Keep the temp HTML for cross-session resume (startBuild reuses it).
   build_.reset();
   partial_ = true;
-  LOG_DBG("VSC", "Suspended vertical build at %u pages (HTML kept for resume)", static_cast<unsigned>(pageCount));
+  LOG_DBG("VSC", "Suspended vertical build at %u pages (HTML kept for resume)",
+          static_cast<unsigned>(pageCount));
 }
 
 uint16_t VerticalSection::estimatedTotalPages() const {
@@ -1356,6 +1372,11 @@ bool VerticalSection::createSectionFile(const int fontId, const uint16_t viewpor
 }
 
 bool VerticalSection::loadSectionFile(const int fontId, const uint16_t viewportWidth, const uint16_t viewportHeight) {
+  // Clean up any stale .part file from a crash-interrupted build.
+  const std::string tmpPath = binTmpPath(filePath);
+  if (Storage.exists(tmpPath.c_str())) {
+    Storage.remove(tmpPath.c_str());
+  }
   // A missing cache file is the NORMAL case here, not an error: the book-progress counter probes
   // every spine's section on each page turn, and unbuilt chapters simply don't have one yet.
   // openFileForRead would print "File does not exist" per spine per probe -- pure log spam.

@@ -447,11 +447,35 @@ void EpubReaderActivity::loop() {
     }
   }
 
-  // Background build for incremental vertical section (current chapter).
-  if (isVerticalActive() && verticalSection_->isBuilding() && !RenderLock::peek() &&
-      buildTickHeapGate()) {
+  // Lazily resume a vertical partial's extension build once the reader nears
+  // its watermark (same pattern as the horizontal section above).
+  if (isVerticalActive() && verticalSection_ && !verticalSection_->isBuilding() &&
+      verticalSection_->isPartial() && !RenderLock::peek() && buildViewportWidth > 0 &&
+      !partialRebuildStartFailed &&
+      verticalSection_->currentPage + PARTIAL_REBUILD_START_MARGIN >=
+          static_cast<int>(verticalSection_->pageCount)) {
     RenderLock lock;
-    if (verticalSection_->isBuilding() && buildTickHeapGate()) {
+    const int fontId = SETTINGS.getReaderFontId();
+    if (!verticalSection_->startBuild(fontId, buildViewportWidth, buildViewportHeight)) {
+      partialRebuildStartFailed = true;
+      LOG_ERR("ERS", "Failed to start deferred vertical partial extension build");
+    } else {
+      LOG_DBG("ERS", "Reader near vertical partial watermark (%d/%d), resuming extension build",
+              verticalSection_->currentPage, verticalSection_->pageCount);
+    }
+  }
+
+  // Background build for incremental vertical section (current chapter).
+  if (isVerticalActive() && verticalSection_ && verticalSection_->isBuilding() &&
+      !RenderLock::peek() && buildTickHeapGate()) {
+    RenderLock lock;
+    // Keep building while the section is partial (rebuild to completion)
+    // OR while the reader is within BUILD_WINDOW_AHEAD pages of the end
+    // (follow-along build, same as the horizontal path).
+    if (verticalSection_->isBuilding() && buildTickHeapGate() &&
+        (verticalSection_->isPartial() ||
+         static_cast<int>(verticalSection_->pageCount) <
+             verticalSection_->currentPage + BUILD_WINDOW_AHEAD)) {
       if (!verticalSection_->buildSomeMore(BACKGROUND_BUILD_PAGES_PER_TICK)) {
         LOG_ERR("ERS", "Background vertical build failed");
         verticalSection_->abandonBuild();
@@ -1176,13 +1200,23 @@ void EpubReaderActivity::render(RenderLock&& lock) {
       };
 
       auto buildVerticalPage0 = [&]() -> bool {
-        // Synchronous full build: parse once, write all pages in one shot.
-        // The parser/sink/extractor/layout pipeline persists in BuildState
-        // for the background build (loop() → buildSomeMore), but the initial
-        // cache is always created atomically to avoid partial-cache races
-        // with the page-turn path.
+        // Incremental blocking build: start the parser and build up to 8 pages
+        // per tick until at least one page is available (same pattern as the
+        // horizontal Section path).  The .part temp file keeps the existing
+        // .bin readable throughout, so getPage() never races with the build.
         GUI.drawPopup(renderer, tr(STR_INDEXING));
         pagesUntilFullRefresh = 1;
+        if (verticalSection_->startBuild(fontId, viewportWidth, viewportHeight)) {
+          while (verticalSection_->isBuilding() && verticalSection_->pageCount == 0) {
+            if (!verticalSection_->buildSomeMore(8)) {
+              verticalSection_->abandonBuild();
+              break;
+            }
+          }
+          if (verticalSection_->pageCount > 0) return true;
+        }
+        // Fallback: synchronous full build.
+        LOG_DBG("ERS", "Incremental build failed or produced no pages; falling back to full build");
         if (verticalSection_->createSectionFile(fontId, viewportWidth, viewportHeight)) {
           return verticalSection_->pageCount > 0;
         }
