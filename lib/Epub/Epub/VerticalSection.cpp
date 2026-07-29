@@ -1040,9 +1040,7 @@ struct VerticalSection::BuildState {
   uint16_t viewportWidth = 0;
   uint16_t viewportHeight = 0;
   HalFile out;
-  HalFile parseFile;          // pre-extracted HTML file (open across calls)
   std::string htmlPath;
-  uint32_t htmlFilePos = 0;   // byte offset in parseFile for resume
   std::vector<uint32_t> pageOffsets;
   uint16_t pagesAlreadyBuilt = 0;
 };
@@ -1176,14 +1174,6 @@ bool VerticalSection::streamParseAndLayout(HalFile& out, const int fontId, const
     Storage.remove(tmpHtmlPath.c_str());
     return false;
   }
-  // Resume from saved file position (buildSomeMore continuation).
-  if (build_ && build_->htmlFilePos > 0) {
-    if (!htmlFile.seekSet(build_->htmlFilePos)) {
-      LOG_ERR("VSC", "Failed to seek to resume position %u", build_->htmlFilePos);
-    } else {
-      LOG_DBG("VSC", "Resuming HTML parse from byte offset %u", build_->htmlFilePos);
-    }
-  }
 
   bool parseOk = true;
   int done;
@@ -1209,7 +1199,6 @@ bool VerticalSection::streamParseAndLayout(HalFile& out, const int fontId, const
     }
     // Stop early when the page budget is reached (incremental build).
     if (sink.hitBudget) {
-      if (build_) build_->htmlFilePos = static_cast<uint32_t>(htmlFile.position());
       done = true;
       break;
     }
@@ -1217,7 +1206,6 @@ bool VerticalSection::streamParseAndLayout(HalFile& out, const int fontId, const
 
   htmlFile.close();
   destroyXmlParser(parser);
-  Storage.remove(tmpHtmlPath.c_str());
 
   if (!parseOk && !sink.hitBudget) return false;
 
