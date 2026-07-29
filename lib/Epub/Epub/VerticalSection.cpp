@@ -630,6 +630,7 @@ struct LayoutPageSink final : ParagraphSink {
   size_t pagesToSkip = 0;
   int pageBudget = 0;
   bool hitBudget = false;
+  XML_Parser* parserRef = nullptr;  // points to BuildState::parser
 
   // ~1-2 screens of text per layout batch. A batch boundary lands between paragraphs, which
   // already force a fresh column, so the only observable effect is an occasional page that ends
@@ -927,7 +928,6 @@ struct LayoutPageSink final : ParagraphSink {
   }
 
   void writeOne(const VerticalPage& p) {
-    // Skip pages that were already built in a previous tick.
     if (pagesToSkip > 0) { pagesToSkip--; return; }
 
     pageOffsets.push_back(static_cast<uint32_t>(out.position()));
@@ -940,7 +940,14 @@ struct LayoutPageSink final : ParagraphSink {
     if (pageBudget > 0 && --pageBudget == 0) {
       LOG_DBG("VSC", "Page budget reached, stopping chunk");
       hitBudget = true;
-      failed = true;
+      // Suspend the Expat parser at the paragraph boundary so the next
+      // buildSomeMore call can resume from where we left off (same as the
+      // horizontal Section's parseStep-based incremental build).  Without
+      // this, the parser would keep processing silently and the pipeine
+      // would consume input past the budget.
+      if (parserRef && *parserRef) {
+        XML_StopParser(*parserRef, XML_TRUE);
+      }
     }
   }
 
@@ -1186,6 +1193,7 @@ bool VerticalSection::startBuild(const int fontId, const uint16_t viewportWidth,
   bs->sink = std::make_unique<LayoutPageSink>(*bs->layout, bs->out, pageOffsets_, *epub, renderer,
                                                bs->chapterDir, bs->imageBasePath,
                                                viewportWidth, viewportHeight, fontId);
+  bs->sink->parserRef = &bs->parser;
 
   // Persistent text extractor, wired to the sink.
   bs->extractor.sink = bs->sink.get();
@@ -1221,19 +1229,22 @@ bool VerticalSection::buildSomeMore(int maxPages) {
 
   GfxRenderer::FrameBufferLoan loan(renderer);
 
-  // Compute the target page count for this chunk.
   const size_t pagesBefore = pageOffsets_.size();
   const size_t targetPages = (maxPages <= 0)
       ? std::numeric_limits<size_t>::max()
       : (pagesBefore + static_cast<size_t>(maxPages));
 
-  // Reset per-chunk sink state.
   build_->sink->pagesToSkip = static_cast<size_t>(pagesBefore);
   build_->sink->pageBudget = (maxPages > 0) ? maxPages : 0;
   build_->sink->hitBudget = false;
 
-  // Feed chunks until we hit the page target or reach EOF.
-  while (!build_->eof && pageOffsets_.size() < targetPages) {
+  // If the parser was suspended by XML_StopParser (page budget reached),
+  // resume it before feeding the next chunk.
+  if (!build_->eof && build_->parser) {
+    XML_ResumeParser(build_->parser);
+  }
+
+  while (!build_->eof && !build_->sink->hitBudget && pageOffsets_.size() < targetPages) {
     void* const buf = XML_GetBuffer(build_->parser, PARSE_BUFFER_SIZE);
     if (!buf) {
       LOG_ERR("VSC", "OOM: parse buffer");
@@ -1254,13 +1265,12 @@ bool VerticalSection::buildSomeMore(int maxPages) {
       abandonBuild();
       return false;
     }
-    if (isFinal) build_->eof = true;
+    if (isFinal && !build_->sink->hitBudget) build_->eof = true;
   }
 
   build_->out.flush();
   loan.end();
 
-  // Flush any remaining paragraph after the end of input.
   if (build_->eof) {
     build_->extractor.flushParagraph();
     build_->sink->flushText(/*isFinalFlush=*/true);
