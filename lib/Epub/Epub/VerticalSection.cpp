@@ -1218,6 +1218,7 @@ bool VerticalSection::startBuild(const int fontId, const uint16_t viewportWidth,
 
   build_ = std::move(bs);
   partial_ = false;
+  pageOffsets_.clear();
   loadedPageIndex_ = -1;
   lastBuildDroppedForHeap_ = false;
   return true;

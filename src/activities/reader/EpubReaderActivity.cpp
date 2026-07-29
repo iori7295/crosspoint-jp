@@ -1200,23 +1200,12 @@ void EpubReaderActivity::render(RenderLock&& lock) {
       };
 
       auto buildVerticalPage0 = [&]() -> bool {
-        // Incremental blocking build: start the parser and build up to 8 pages
-        // per tick until at least one page is available (same pattern as the
-        // horizontal Section path).  The .part temp file keeps the existing
-        // .bin readable throughout, so getPage() never races with the build.
+        // Synchronous full build: parse once, write all pages in one shot.
+        // The .part output keeps the existing .bin readable throughout, and
+        // after completion build_ is fully torn down so the background build
+        // never fires on a fragmented heap.
         GUI.drawPopup(renderer, tr(STR_INDEXING));
         pagesUntilFullRefresh = 1;
-        if (verticalSection_->startBuild(fontId, viewportWidth, viewportHeight)) {
-          while (verticalSection_->isBuilding() && verticalSection_->pageCount == 0) {
-            if (!verticalSection_->buildSomeMore(8)) {
-              verticalSection_->abandonBuild();
-              break;
-            }
-          }
-          if (verticalSection_->pageCount > 0) return true;
-        }
-        // Fallback: synchronous full build.
-        LOG_DBG("ERS", "Incremental build failed or produced no pages; falling back to full build");
         if (verticalSection_->createSectionFile(fontId, viewportWidth, viewportHeight)) {
           return verticalSection_->pageCount > 0;
         }
