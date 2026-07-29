@@ -82,7 +82,7 @@ bool FontDownloadActivity::fetchAndParseManifest() {
   static constexpr int MAX_RETRIES = 3;
   auto result = HttpDownloader::HTTP_ERROR;
   for (int attempt = 1; attempt <= MAX_RETRIES; ++attempt) {
-    result = HttpDownloader::downloadToFileInsecure(FONT_MANIFEST_URL, MANIFEST_TMP, nullptr);
+    result = HttpDownloader::downloadToFile(FONT_MANIFEST_URL, MANIFEST_TMP, nullptr);
     if (result == HttpDownloader::OK) break;
     LOG_DBG("FONT", "Manifest download attempt %d/%d failed", attempt, MAX_RETRIES);
     if (attempt < MAX_RETRIES) delay(1000);
@@ -310,7 +310,7 @@ void FontDownloadActivity::downloadFamily(ManifestFamily& family) {
 
     std::string url = baseUrl_ + file.name;
 
-    auto result = HttpDownloader::downloadToFileInsecure(
+    auto result = HttpDownloader::downloadToFile(
         url, destPath,
         [this](size_t downloaded, size_t total) {
           fileProgress_ = downloaded;
