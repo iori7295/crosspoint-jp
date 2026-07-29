@@ -1157,12 +1157,15 @@ bool VerticalSection::startBuild(const int fontId, const uint16_t viewportWidth,
     return false;
   }
 
-  // Heap guard.
+  // Heap guard: match the horizontal Section's approach of letting
+  // individual allocations (parser, layout) fail naturally if they OOM,
+  // rather than guessing a single threshold.  A token guard against the
+  // degenerate case where there's truly nothing to work with.
   const uint32_t maxAlloc = ESP.getMaxAllocHeap();
-  constexpr uint32_t kHardFailBytes = 24 * 1024;
+  constexpr uint32_t kTokenGuard = 8 * 1024;
   constexpr uint32_t kLowMemBytes  = 40 * 1024;
-  if (maxAlloc < kHardFailBytes) {
-    LOG_ERR("VSC", "Insufficient heap (maxAlloc=%u < %u), deferring", maxAlloc, kHardFailBytes);
+  if (maxAlloc < kTokenGuard) {
+    LOG_ERR("VSC", "Insufficient heap (maxAlloc=%u < %u), deferring", maxAlloc, kTokenGuard);
     return false;
   }
   bs->lowMemMode = (maxAlloc < kLowMemBytes);
