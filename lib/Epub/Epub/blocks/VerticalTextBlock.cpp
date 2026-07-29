@@ -42,7 +42,22 @@ int computeCellPx(GfxRenderer& renderer, int fontId) {
 
 void drawGlyphs(GfxRenderer& renderer, const VerticalPage& page, int fontId, int offsetX, int offsetY, bool black) {
   const int cellPx = computeCellPx(renderer, fontId);
-  const int globalDownNudge = std::max(1, (cellPx * 3) / 8);
+  // Derive the baseline nudge from the actual CJK glyph metrics rather than
+  // a fixed ratio of cellPx, so the visual center of upright text aligns with
+  // the cell centre regardless of font-specific ascender/descender ratios.
+  // This ensures rotated punctuation (「」ー) rendered via the centering formula
+  // at line 109-110 lands at the same visual height as surrounding upright text.
+  int glyphL = 0, glyphW = 0, glyphT = 0, glyphH = 0;
+  const int CJK_REF = 0x6F22;  // 漢
+  const auto refStyle = static_cast<EpdFontFamily::Style>(0);
+  int globalDownNudge = std::max(1, (cellPx * 3) / 8);
+  if (renderer.getGlyphMetrics(fontId, CJK_REF, refStyle, &glyphL, &glyphW, &glyphT, &glyphH) && glyphH > 0) {
+    // Centre the glyph's ink vertically in the cell:
+    //   cell centre = g.y + offsetY + cellPx/2
+    //   glyph ink centre = baseline - glyphT + glyphH/2
+    // Set baseline so both centres coincide → baseline = g.y + offsetY + cellPx/2 + glyphT - glyphH/2
+    globalDownNudge = std::max(1, cellPx / 2 + glyphT - glyphH / 2);
+  }
   for (const VerticalGlyph& g : page.glyphs) {
     const int dx = g.x + offsetX;
     int dy = g.y + offsetY + globalDownNudge;
