@@ -640,8 +640,8 @@ std::vector<VerticalPage> VerticalParsedText::layoutPages(void* ctx, PageReadyCa
     const uint32_t f = ESP.getMaxAllocHeap();
     if (f < 5 * 1024) return 0;
     if (f < 7 * 1024) return std::min<size_t>(glyphsPerPage, 4);
-    if (f < 10 * 1024) return std::min<size_t>(glyphsPerPage, 8);
-    if (f < 14 * 1024) return std::min<size_t>(glyphsPerPage, 16);
+    if (f < 9 * 1024) return std::min<size_t>(glyphsPerPage, 8);
+    if (f < 12 * 1024) return std::min<size_t>(glyphsPerPage, 16);
     return std::min<size_t>(glyphsPerPage, 32);
   };
 

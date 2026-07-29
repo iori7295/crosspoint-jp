@@ -654,33 +654,33 @@ struct LayoutPageSink final : ParagraphSink {
   static size_t currentChunkCharBudget() {
     const uint32_t m = ESP.getMaxAllocHeap();
     if (m < 12 * 1024) return 8;
-    if (m < 16 * 1024) return 12;
-    if (m < 24 * 1024) return 24;
-    if (m < 48 * 1024) return 48;
+    if (m < 16 * 1024) return 24;
+    if (m < 24 * 1024) return 48;
+    if (m < 48 * 1024) return 64;
     return BATCH_CHARS;
   }
   static size_t currentChunkByteBudget() {
     const uint32_t m = ESP.getMaxAllocHeap();
     if (m < 12 * 1024) return 128;
-    if (m < 16 * 1024) return 192;
-    if (m < 24 * 1024) return 384;
-    if (m < 48 * 1024) return 512;
+    if (m < 16 * 1024) return 384;
+    if (m < 24 * 1024) return 512;
+    if (m < 48 * 1024) return 768;
     return 1024;
   }
   static size_t currentRunSliceChars() {
     const uint32_t m = ESP.getMaxAllocHeap();
     if (m < 12 * 1024) return 8;
-    if (m < 16 * 1024) return 12;
-    if (m < 24 * 1024) return 24;
-    if (m < 48 * 1024) return 48;
+    if (m < 16 * 1024) return 24;
+    if (m < 24 * 1024) return 48;
+    if (m < 48 * 1024) return 64;
     return 96;
   }
   static size_t currentRubyByteLimit() {
     const uint32_t m = ESP.getMaxAllocHeap();
     if (m < 12 * 1024) return 48;
-    if (m < 16 * 1024) return 64;
-    if (m < 24 * 1024) return 128;
-    if (m < 48 * 1024) return 192;
+    if (m < 16 * 1024) return 128;
+    if (m < 24 * 1024) return 192;
+    if (m < 48 * 1024) return 256;
     return 384;
   }
 
