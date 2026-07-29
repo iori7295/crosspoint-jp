@@ -34,11 +34,7 @@ class VerticalSection {
   mutable int loadedPageIndex_ = -1;
 
   bool lastBuildDroppedForHeap_ = false;
-  bool lowMemMode_ = false;
   bool partial_ = false;
-  bool hasRuby_ = false;
-  std::string chapterDir_;
-  std::string imageBasePath_;
 
   struct BuildState;
   std::unique_ptr<BuildState> build_;
