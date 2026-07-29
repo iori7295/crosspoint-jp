@@ -42,22 +42,7 @@ int computeCellPx(GfxRenderer& renderer, int fontId) {
 
 void drawGlyphs(GfxRenderer& renderer, const VerticalPage& page, int fontId, int offsetX, int offsetY, bool black) {
   const int cellPx = computeCellPx(renderer, fontId);
-  // Derive the baseline nudge from the actual CJK glyph metrics rather than
-  // a fixed ratio of cellPx, so the visual center of upright text aligns with
-  // the cell centre regardless of font-specific ascender/descender ratios.
-  // This ensures rotated punctuation (「」ー) rendered via the centering formula
-  // at line 109-110 lands at the same visual height as surrounding upright text.
-  int glyphL = 0, glyphW = 0, glyphT = 0, glyphH = 0;
-  const int CJK_REF = 0x6F22;  // 漢
-  const auto refStyle = static_cast<EpdFontFamily::Style>(0);
-  int globalDownNudge = std::max(1, (cellPx * 3) / 8);
-  if (renderer.getGlyphMetrics(fontId, CJK_REF, refStyle, &glyphL, &glyphW, &glyphT, &glyphH) && glyphH > 0) {
-    // Centre the glyph's ink vertically in the cell:
-    //   cell centre = g.y + offsetY + cellPx/2
-    //   glyph ink centre = baseline - glyphT + glyphH/2
-    // Set baseline so both centres coincide → baseline = g.y + offsetY + cellPx/2 + glyphT - glyphH/2
-    globalDownNudge = std::max(1, cellPx / 2 + glyphT - glyphH / 2);
-  }
+  const int globalDownNudge = std::max(1, (cellPx * 3) / 8);
   for (const VerticalGlyph& g : page.glyphs) {
     const int dx = g.x + offsetX;
     int dy = g.y + offsetY + globalDownNudge;
@@ -99,9 +84,12 @@ void drawGlyphs(GfxRenderer& renderer, const VerticalPage& page, int fontId, int
         }
       } else {
         // Rotated punctuation: position and render via 90° CCW rotation.
-        int rotatedDy = dy;
+        // rCursorY maps to the HORIZONTAL position on screen (screenY = cursorY + left).
+        // Use the cell top (g.y + offsetY) as base, NOT dy which includes the
+        // vertical baseline nudge — that would shift the glyph out of its column.
+        int rotatedYBase = g.y + offsetY;
         if (shiftType == 4) {
-          rotatedDy += std::max(1, (cellPx * 3) / 8);
+          rotatedYBase += std::max(1, (cellPx * 3) / 8);
         }
         int gl = 0, gw = 0, gt = 0, gh = 0;
         (void)renderer.getGlyphMetrics(fontId, g.codepoint, style, &gl, &gw, &gt, &gh);
@@ -119,10 +107,10 @@ void drawGlyphs(GfxRenderer& renderer, const VerticalPage& page, int fontId, int
         }
         // Rotated 90° CCW: screenX = cursorX + top - glyphY → ink visual
         // centre at cursorX + top - height/2.  Align that with the cell
-        // centre (dx + cellPx/2).  Y uses the baseline-relative position
-        // (same as upright text) to avoid overlap with the row above.
+        // centre (dx + cellPx/2).  Y uses the cell top as base so the
+        // horizontal centering is not polluted by the vertical baseline nudge.
         const int rCursorX = dx + cellPx / 2 + gh / 2 - gt + nudgeX;
-        const int rCursorY = rotatedDy + cellPx / 2 + gh / 2 + nudgeY;
+        const int rCursorY = rotatedYBase + cellPx / 2 + gh / 2 + nudgeY;
         std::string utf8Buf;
         encodeCodepoint(g.codepoint, utf8Buf);
         renderer.drawTextRotated90CCW(fontId, rCursorX, rCursorY, utf8Buf.c_str(), black, style);
