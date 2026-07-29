@@ -413,6 +413,21 @@ void EpubReaderActivity::loop() {
     }
   }
 
+  // Resume vertical partial build when reader approaches the watermark.
+  if (isVerticalActive() && verticalSection_ && !verticalSection_->isBuilding() &&
+      verticalSection_->isPartial() && !RenderLock::peek() && buildViewportWidth > 0 &&
+      verticalSection_->currentPage + PARTIAL_REBUILD_START_MARGIN >=
+          static_cast<int>(verticalSection_->pageCount)) {
+    RenderLock lock;
+    const int fontId = SETTINGS.getReaderFontId();
+    if (!verticalSection_->startBuild(fontId, buildViewportWidth, buildViewportHeight)) {
+      LOG_ERR("ERS", "Failed to restart partial vertical build");
+    } else {
+      LOG_DBG("ERS", "Resuming vertical partial build (%d/%d)", verticalSection_->currentPage,
+              verticalSection_->pageCount);
+    }
+  }
+
   // Drive any in-progress incremental section build forward, off the page-turn critical path,
   // but only within a small window ahead of the reader: an unbounded build monopolized the
   // RenderLock and locked out page turns. The build follows the reader instead, and instant
@@ -1186,12 +1201,7 @@ void EpubReaderActivity::render(RenderLock&& lock) {
               break;
             }
           }
-          if (verticalSection_->pageCount > 0) {
-            // Finalize the cache and close the write handle so getPage() can
-            // read the file from another handle without stale-cache issues.
-            verticalSection_->suspendBuild();
-            return true;
-          }
+          if (verticalSection_->pageCount > 0) return true;
         }
         // Fallback: synchronous full build.
         LOG_DBG("ERS", "Incremental build failed or produced no pages; falling back to full build");
@@ -1383,6 +1393,11 @@ void EpubReaderActivity::render(RenderLock&& lock) {
   renderer.clearScreen();
 
   if (isVerticalActive()) {
+    // Close the build write handle so the subsequent getPage() read handle
+    // sees valid data instead of the write buffer's stale cache.
+    if (verticalSection_->isBuilding()) {
+      verticalSection_->suspendBuild();
+    }
     if (verticalSection_->pageCount == 0) {
       LOG_DBG("ERS", "Vertical section has zero pages at render, skipping spine");
       if (currentSpineIndex + 1 < epub->getSpineItemsCount()) {
