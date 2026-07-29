@@ -1218,10 +1218,8 @@ bool VerticalSection::startBuild(const int fontId, const uint16_t viewportWidth,
 
   build_ = std::move(bs);
   partial_ = false;
-  pageOffsets_.clear();
   loadedPageIndex_ = -1;
   lastBuildDroppedForHeap_ = false;
-  pageCount = 0;
   return true;
 }
 
@@ -1481,8 +1479,19 @@ const VerticalPage* VerticalSection::getPage(int pageIndex) const {
   // Fault the page in from the SD cache. The previous pointer returned by getPage() is
   // invalidated here -- all callers fetch-and-render one page at a time.
   loadedPageIndex_ = -1;
+
+  // During an active build the cache file is written to .part (so the
+  // existing .bin from a previous session stays readable).  If the .bin
+  // hasn't been promoted yet, read from .part instead.
+  const char* openPath = filePath.c_str();
+  std::string partPath;
+  if (!Storage.exists(filePath.c_str()) && build_) {
+    partPath = binTmpPath(filePath);
+    if (Storage.exists(partPath.c_str())) openPath = partPath.c_str();
+  }
+
   HalFile file;
-  if (!Storage.openFileForRead("VSC", filePath, file)) {
+  if (!Storage.openFileForRead("VSC", openPath, file)) {
     return nullptr;
   }
   if (!file.seek(pageOffsets_[static_cast<size_t>(pageIndex)])) {
