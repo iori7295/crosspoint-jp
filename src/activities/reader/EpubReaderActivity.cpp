@@ -1176,20 +1176,13 @@ void EpubReaderActivity::render(RenderLock&& lock) {
       };
 
       auto buildVerticalPage0 = [&]() -> bool {
-        // Try incremental build first: startBuild + buildSomeMore until page 0.
+        // Synchronous full build: parse the HTML once, lay out all pages, and
+        // write them in one shot.  The incremental approach (budget=1 then
+        // background extension) was O(n^2): every chunk re-parsed the entire
+        // HTML from position 0 only to skip already-built pages, making a
+        // 100-page chapter take ~8 minutes of wall-clock background building.
         GUI.drawPopup(renderer, tr(STR_INDEXING));
         pagesUntilFullRefresh = 1;
-        if (verticalSection_->startBuild(fontId, viewportWidth, viewportHeight)) {
-          while (verticalSection_->isBuilding() && verticalSection_->pageCount == 0) {
-            if (!verticalSection_->buildSomeMore(1)) {
-              verticalSection_->abandonBuild();
-              break;
-            }
-          }
-          if (verticalSection_->pageCount > 0) return true;
-        }
-        // Fallback: synchronous full build.
-        LOG_DBG("ERS", "Incremental build failed or produced no pages; falling back to full build");
         if (verticalSection_->createSectionFile(fontId, viewportWidth, viewportHeight)) {
           return verticalSection_->pageCount > 0;
         }

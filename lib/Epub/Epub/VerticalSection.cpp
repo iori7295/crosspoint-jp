@@ -1045,6 +1045,11 @@ struct VerticalSection::BuildState {
   uint16_t pagesAlreadyBuilt = 0;
 };
 
+// Forward declarations
+static bool extractChapterHtml(Epub& epub, int spineIndex, const std::string& tmpHtmlPath);
+static bool finalizeVerticalCache(HalFile& file, const std::vector<uint32_t>& pageOffsets, uint16_t& pageCount,
+                                   uint16_t flags);
+
 VerticalSection::VerticalSection(const std::shared_ptr<Epub>& epub, int spineIndex, GfxRenderer& renderer)
     : epub(epub), spineIndex(spineIndex), renderer(renderer),
       filePath(epub->getCachePath() + "/vsections/" + std::to_string(spineIndex) + ".bin") {}
@@ -1084,26 +1089,9 @@ bool VerticalSection::streamParseAndLayout(HalFile& out, const int fontId, const
 
   const auto tmpHtmlPath = epub->getCachePath() + "/.tmp_v" + std::to_string(spineIndex) + ".html";
 
-  bool success = false;
-  for (int attempt = 0; attempt < 3 && !success; attempt++) {
-    if (attempt > 0) {
-      delay(50);
-    }
-    if (Storage.exists(tmpHtmlPath.c_str())) {
-      Storage.remove(tmpHtmlPath.c_str());
-    }
-    HalFile tmpHtml;
-    if (!Storage.openFileForWrite("VSC", tmpHtmlPath, tmpHtml)) {
-      continue;
-    }
-    success = epub->readItemContentsToStream(localPath, tmpHtml, PARSE_BUFFER_SIZE);
-    tmpHtml.close();
-    if (!success && Storage.exists(tmpHtmlPath.c_str())) {
-      Storage.remove(tmpHtmlPath.c_str());
-    }
-  }
-
-  if (!success) {
+  // Reuse an already-extracted temp HTML (from a previous buildSomeMore call)
+  // to avoid re-decompressing the ZIP (~700 KB for a chapter).
+  if (!extractChapterHtml(*epub, spineIndex, tmpHtmlPath)) {
     LOG_ERR("VSC", "Failed to stream chapter HTML");
     return false;
   }
