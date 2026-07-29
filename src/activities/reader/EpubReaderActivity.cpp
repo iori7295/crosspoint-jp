@@ -1176,25 +1176,13 @@ void EpubReaderActivity::render(RenderLock&& lock) {
       };
 
       auto buildVerticalPage0 = [&]() -> bool {
-        // Incremental build: start the Expat parser and build up to 8 pages
-        // per tick.  The parser stays alive across calls (held in BuildState)
-        // so subsequent buildSomeMore calls continue from where they left off
-        // -- O(n), matching the horizontal Section's parseStep approach.
+        // Synchronous full build: parse once, write all pages in one shot.
+        // The parser/sink/extractor/layout pipeline persists in BuildState
+        // for the background build (loop() → buildSomeMore), but the initial
+        // cache is always created atomically to avoid partial-cache races
+        // with the page-turn path.
         GUI.drawPopup(renderer, tr(STR_INDEXING));
         pagesUntilFullRefresh = 1;
-        if (verticalSection_->startBuild(fontId, viewportWidth, viewportHeight)) {
-          // Build until at least one page is produced (the parser may need
-          // a chunk of input before the first page completes).
-          while (verticalSection_->isBuilding() && verticalSection_->pageCount == 0) {
-            if (!verticalSection_->buildSomeMore(8)) {
-              verticalSection_->abandonBuild();
-              break;
-            }
-          }
-          if (verticalSection_->pageCount > 0) return true;
-        }
-        // Fallback: synchronous full build.
-        LOG_DBG("ERS", "Incremental build failed or produced no pages; falling back to full build");
         if (verticalSection_->createSectionFile(fontId, viewportWidth, viewportHeight)) {
           return verticalSection_->pageCount > 0;
         }

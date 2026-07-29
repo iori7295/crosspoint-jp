@@ -940,11 +940,7 @@ struct LayoutPageSink final : ParagraphSink {
     if (pageBudget > 0 && --pageBudget == 0) {
       LOG_DBG("VSC", "Page budget reached, stopping chunk");
       hitBudget = true;
-      // Suspend the Expat parser at the paragraph boundary so the next
-      // buildSomeMore call can resume from where we left off (same as the
-      // horizontal Section's parseStep-based incremental build).  Without
-      // this, the parser would keep processing silently and the pipeine
-      // would consume input past the budget.
+      failed = true;
       if (parserRef && *parserRef) {
         XML_StopParser(*parserRef, XML_TRUE);
       }
