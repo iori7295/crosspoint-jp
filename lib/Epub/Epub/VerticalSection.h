@@ -36,12 +36,12 @@ class VerticalSection {
   bool lastBuildDroppedForHeap_ = false;
   bool lowMemMode_ = false;
   bool partial_ = false;
+  bool hasRuby_ = false;
+  std::string chapterDir_;
+  std::string imageBasePath_;
 
   struct BuildState;
   std::unique_ptr<BuildState> build_;
-
-  bool streamParseAndLayout(HalFile& out, int fontId, uint16_t viewportWidth, uint16_t viewportHeight,
-                            int pagesToSkip, int pageBudget, bool* hitPageBudget);
 
  public:
   uint16_t pageCount = 0;

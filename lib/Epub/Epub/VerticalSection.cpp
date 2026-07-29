@@ -1039,10 +1039,20 @@ struct VerticalSection::BuildState {
   int fontId = 0;
   uint16_t viewportWidth = 0;
   uint16_t viewportHeight = 0;
-  HalFile out;
-  std::string htmlPath;
+  HalFile out;           // cache file (.bin)
+  std::string htmlPath;  // path to pre-extracted temp HTML
   std::vector<uint32_t> pageOffsets;
   uint16_t pagesAlreadyBuilt = 0;
+
+  // Persistent parse state (survives across buildSomeMore calls).
+  // Expat parser and temp HTML file handle are created in startBuild and
+  // kept alive until EOF or abandonBuild, avoiding O(n²) re-parsing of
+  // the entire chapter on every call.
+  XML_Parser parser = nullptr;
+  HalFile htmlFile;
+  bool firstChunk = true;  // true on the very first feed chunk
+
+  ~BuildState() { destroyXmlParser(parser); }
 };
 
 // Forward declarations
@@ -1055,163 +1065,7 @@ VerticalSection::VerticalSection(const std::shared_ptr<Epub>& epub, int spineInd
       filePath(epub->getCachePath() + "/vsections/" + std::to_string(spineIndex) + ".bin") {}
 VerticalSection::~VerticalSection() = default;
 
-bool VerticalSection::streamParseAndLayout(HalFile& out, const int fontId, const uint16_t viewportWidth,
-                                            const uint16_t viewportHeight,
-                                            const int pagesToSkip, const int pageBudget, bool* hitPageBudget) {
-  // Diagnostic: the "sparse page" investigation found maxAlloc already down at the very first
-  // paragraph flush, staying flat for the rest of the chapter -- logging both metrics here checks
-  // whether that low contiguous budget is a fresh drop from THIS chapter's own parsing, or whether
-  // the heap was already this fragmented (from earlier chapters/navigation this session) before
-  // this chapter's build even started. free=getFreeHeap() (total) was already logged; maxAlloc=
-  // getMaxAllocHeap() (largest contiguous block) is new.
-  const uint32_t buildStartMs = millis();
-  LOG_INF("VSC", "streamParseAndLayout start spine=%d free=%u maxAlloc=%u", spineIndex, ESP.getFreeHeap(),
-          ESP.getMaxAllocHeap());
-  const auto localPath = epub->getSpineItem(spineIndex).href;
-  // Degraded mode: when maxAlloc is between 24KB and 40KB the chapter can still
-  // build but heavy optimisations (page glyph cache, large reserves, agressive
-  // prewarm) are disabled.  Below 24KB there isn't enough contiguous memory for
-  // the zip inflate window (32KB) so we fail early.  This was a hard 40KB gate
-  // before, which rejected even short /title.html chapters on a mildly
-  // fragmented heap -- see the stabilize-list hotfix.
-  const uint32_t maxAlloc = ESP.getMaxAllocHeap();
-  constexpr uint32_t kHardFailBytes = 24 * 1024;
-  constexpr uint32_t kLowMemBytes  = 40 * 1024;
-  if (maxAlloc < kHardFailBytes) {
-    LOG_ERR("VSC", "Insufficient heap (maxAlloc=%u < %u), deferring", maxAlloc, kHardFailBytes);
-    return false;
-  }
-  const bool lowMemMode = maxAlloc < kLowMemBytes;
-  if (lowMemMode) {
-    LOG_DBG("VSC", "Low-memory vertical build (maxAlloc=%u < %u), degraded mode", maxAlloc, kLowMemBytes);
-  }
-  lowMemMode_ = lowMemMode;
-
-  const auto tmpHtmlPath = epub->getCachePath() + "/.tmp_v" + std::to_string(spineIndex) + ".html";
-
-  // Reuse an already-extracted temp HTML (from a previous buildSomeMore call)
-  // to avoid re-decompressing the ZIP (~700 KB for a chapter).
-  if (!extractChapterHtml(*epub, spineIndex, tmpHtmlPath)) {
-    LOG_ERR("VSC", "Failed to stream chapter HTML");
-    return false;
-  }
-  // Diagnostic: bisecting a ~10KB drop seen between chapter start and the first paragraph flush --
-  // isolates whether it's the HTML-to-tempfile copy (zip inflate window), the ruby-tag scan, or
-  // XML_ParserCreate's own setup.
-  LOG_DBG("VSC", "after readItemContentsToStream: maxAlloc=%u", ESP.getMaxAllocHeap());
-
-  const bool hasRuby = fileContainsRubyTag(tmpHtmlPath);
-  LOG_DBG("VSC", "after fileContainsRubyTag: maxAlloc=%u", ESP.getMaxAllocHeap());
-
-  // Resolve image paths relative to the chapter's directory in the EPUB.
-  const auto& spineItem = epub->getSpineItem(spineIndex);
-  std::string chapterDir;
-  {
-    const size_t slash = spineItem.href.rfind('/');
-    if (slash != std::string::npos) chapterDir = spineItem.href.substr(0, slash + 1);
-  }
-  const std::string imageBasePath = epub->getCachePath() + "/img_v" + std::to_string(spineIndex) + "_";
-
-  VerticalParsedText layout(renderer, fontId, viewportWidth, viewportHeight);
-  layout.preallocateStream();
-  const int lineH = renderer.getLineHeight(fontId);
-  layout.setColumnGapPx((lineH / 3) < 4 ? 4 : (lineH / 3));
-  if (hasRuby) {
-    layout.setColumnGapPx(lineH * 2 / 3);
-    layout.setRightPaddingPx((lineH / 2) < 2 ? 2 : (lineH / 2));
-  }
-
-  LayoutPageSink sink(layout, out, pageOffsets_, *epub, renderer, chapterDir, imageBasePath, viewportWidth,
-                      viewportHeight, fontId);
-  sink.pagesToSkip = static_cast<size_t>(std::max(0, pagesToSkip));
-  sink.pageBudget = std::max(0, pageBudget);
-  sink.hitBudget = false;
-
-  TextExtractor extractor;
-  extractor.sink = &sink;
-  // Pin every buffer that lives across the whole build to its worst case NOW, while the heap
-  // is freshest -- mid-build growth (doubling alloc-copy-free) plants persistent blocks in
-  // the region the per-flush transients need, shredding the largest contiguous block over the
-  // chapter (observed live: maxAlloc 77K -> 4K -> abort on a novel shipped as one 238KB
-  // file). The streaming cadence (SOFT_FLUSH_BYTES/SOFT_FLUSH_RUNS) keeps these worst cases
-  // small; same rationale as VerticalParsedText::preallocateStream().
-  extractor.currentText.reserve(TextExtractor::SOFT_FLUSH_BYTES + 512);
-  extractor.currentRuns.reserve(TextExtractor::SOFT_FLUSH_RUNS + 8);
-  extractor.rubyBase.reserve(TextExtractor::RUBY_RESERVE_HINT);
-  extractor.rubyAnnotation.reserve(TextExtractor::RUBY_RESERVE_HINT);
-  if (!lowMemMode_) {
-    pageOffsets_.reserve(640);  // 2.5KB; a 240KB chapter yields ~500 pages
-  }
-
-  XML_Parser parser = XML_ParserCreate(nullptr);
-  if (!parser) {
-    LOG_ERR("VSC", "OOM: XML parser");
-    Storage.remove(tmpHtmlPath.c_str());
-    return false;
-  }
-  LOG_DBG("VSC", "after XML_ParserCreate: maxAlloc=%u", ESP.getMaxAllocHeap());
-
-  XML_SetDefaultHandlerExpand(parser, TextExtractor::defaultHandler);
-  XML_SetUserData(parser, &extractor);
-  XML_SetElementHandler(parser, TextExtractor::startElement, TextExtractor::endElement);
-  XML_SetCharacterDataHandler(parser, TextExtractor::characterData);
-
-  HalFile htmlFile;
-  if (!Storage.openFileForRead("VSC", tmpHtmlPath, htmlFile)) {
-    destroyXmlParser(parser);
-    Storage.remove(tmpHtmlPath.c_str());
-    return false;
-  }
-
-  bool parseOk = true;
-  int done;
-  do {
-    void* const buf = XML_GetBuffer(parser, PARSE_BUFFER_SIZE);
-    if (!buf) {
-      LOG_ERR("VSC", "OOM: parse buffer");
-      parseOk = false;
-      break;
-    }
-    const size_t len = htmlFile.read(buf, PARSE_BUFFER_SIZE);
-    if (len == 0 && htmlFile.available() > 0) {
-      LOG_ERR("VSC", "File read error");
-      parseOk = false;
-      break;
-    }
-    done = htmlFile.available() == 0;
-    if (XML_ParseBuffer(parser, static_cast<int>(len), done) == XML_STATUS_ERROR) {
-      LOG_ERR("VSC", "XML parse error at line %lu: %s", XML_GetCurrentLineNumber(parser),
-              XML_ErrorString(XML_GetErrorCode(parser)));
-      parseOk = false;
-      break;
-    }
-    // Stop early when the page budget is reached (incremental build).
-    if (sink.hitBudget) {
-      done = true;
-      break;
-    }
-  } while (!done);
-
-  htmlFile.close();
-  destroyXmlParser(parser);
-
-  if (!parseOk && !sink.hitBudget) return false;
-
-  extractor.flushParagraph();
-  sink.flushText(/*isFinalFlush=*/true);
-
-  if (sink.failed && !sink.hitBudget) return false;
-
-  lastBuildDroppedForHeap_ = layout.everDroppedForHeap();
-  LOG_INF("VSC", "streamParseAndLayout: %u ms", millis() - buildStartMs);
-  LOG_INF("VSC", "streamParseAndLayout end spine=%d pages=%zu free=%u", spineIndex, pageOffsets_.size(),
-          ESP.getFreeHeap());
-  if (hitPageBudget) *hitPageBudget = sink.hitBudget;
-  return true;
-}
-
 // Write the page-offset index and patch the header pageCount field.
-// Called by finalizeBuild() after streamParseAndLayout completes.
 static bool patchVerticalCacheHeader(HalFile& file, uint16_t pageCount, uint32_t indexOffset, uint16_t flags) {
   if (!file.seek(VSECTION_HEADER_PCOUNT_OFF)) return false;
   serialization::writePod(file, pageCount);
@@ -1285,10 +1139,28 @@ bool VerticalSection::startBuild(const int fontId, const uint16_t viewportWidth,
   serialization::writePod(bs->out, indexOffsetPH);
   serialization::writePod(bs->out, flagsPH);
 
+  // Open the temp HTML for incremental reading.  The file is kept open
+  // across buildSomeMore calls so the Expat parser's internal buffers
+  // stay valid between chunks.
+  if (!Storage.openFileForRead("VSC", bs->htmlPath, bs->htmlFile)) {
+    return false;
+  }
+
+  // Create the Expat parser with TextExtractor handlers.
+  bs->parser = XML_ParserCreate(nullptr);
+  if (!bs->parser) {
+    LOG_ERR("VSC", "OOM: XML parser");
+    return false;
+  }
+
+  // Handlers are set on each buildSomeMore call (the TextExtractor state
+  // is transient).  The parser itself persists via the BuildState dtor.
+
   build_ = std::move(bs);
   partial_ = false;
   pageOffsets_.clear();
   loadedPageIndex_ = -1;
+  lastBuildDroppedForHeap_ = false;
   pageCount = 0;
   return true;
 }
@@ -1298,46 +1170,141 @@ bool VerticalSection::buildSomeMore(int maxPages) {
 
   GfxRenderer::FrameBufferLoan loan(renderer);
 
-  const int pagesToSkip = static_cast<int>(build_->pagesAlreadyBuilt);
+  const int startCount = static_cast<int>(pageOffsets_.size());
   const int pageBudget = (maxPages > 0) ? maxPages : 0;
-  bool hitPageBudget = false;
 
-  const bool ok = streamParseAndLayout(build_->out, build_->fontId, build_->viewportWidth,
-                                        build_->viewportHeight, pagesToSkip, pageBudget, &hitPageBudget);
-  // Flush so a subsequent read via getPage() sees the data even while the
-  // write handle stays open for incremental build continuation.
+  // On the very first call, initialise the transient pipeline
+  // (TextExtractor, LayoutPageSink, VerticalParsedText) and attach
+  // handlers to the persistent Expat parser.
+  if (build_->firstChunk) {
+    build_->firstChunk = false;
+
+    const uint32_t maxAlloc = ESP.getMaxAllocHeap();
+    constexpr uint32_t kHardFailBytes = 24 * 1024;
+    constexpr uint32_t kLowMemBytes  = 40 * 1024;
+    if (maxAlloc < kHardFailBytes) {
+      LOG_ERR("VSC", "Insufficient heap (maxAlloc=%u < %u), deferring", maxAlloc, kHardFailBytes);
+      abandonBuild();
+      return false;
+    }
+    const bool lowMemMode = maxAlloc < kLowMemBytes;
+    if (lowMemMode) {
+      LOG_DBG("VSC", "Low-memory vertical build (maxAlloc=%u < %u), degraded mode", maxAlloc, kLowMemBytes);
+    }
+    lowMemMode_ = lowMemMode;
+
+    LOG_DBG("VSC", "after readItemContentsToStream: maxAlloc=%u", ESP.getMaxAllocHeap());
+
+    // Ruby-tag scan and image-path resolution (needed once per chapter).
+    if (chapterDir_.empty()) {
+      const auto& spineItem = epub->getSpineItem(spineIndex);
+      const size_t slash = spineItem.href.rfind('/');
+      if (slash != std::string::npos) chapterDir_ = spineItem.href.substr(0, slash + 1);
+    }
+    if (imageBasePath_.empty()) {
+      imageBasePath_ = epub->getCachePath() + "/img_v" + std::to_string(spineIndex) + "_";
+    }
+    if (!hasRuby_) {
+      hasRuby_ = fileContainsRubyTag(build_->htmlPath);
+      LOG_DBG("VSC", "after fileContainsRubyTag: maxAlloc=%u", ESP.getMaxAllocHeap());
+    }
+  }
+
+  // Build the transient pipeline objects every call.  The Expat parser
+  // (held in build_->parser) survives across calls so XML parsing resumes
+  // from where the previous chunk left off rather than re-parsing the
+  // entire chapter -- O(n) instead of O(n²).
+
+  VerticalParsedText layout(renderer, build_->fontId, build_->viewportWidth, build_->viewportHeight);
+  layout.preallocateStream();
+  const int lineH = renderer.getLineHeight(build_->fontId);
+  layout.setColumnGapPx((lineH / 3) < 4 ? 4 : (lineH / 3));
+  if (hasRuby_) {
+    layout.setColumnGapPx(lineH * 2 / 3);
+    layout.setRightPaddingPx((lineH / 2) < 2 ? 2 : (lineH / 2));
+  }
+
+  LayoutPageSink sink(layout, build_->out, pageOffsets_, *epub, renderer, chapterDir_, imageBasePath_,
+                      build_->viewportWidth, build_->viewportHeight, build_->fontId);
+  sink.pagesToSkip = static_cast<size_t>(startCount);
+  sink.pageBudget = pageBudget;
+  sink.hitBudget = false;
+
+  TextExtractor extractor;
+  extractor.sink = &sink;
+  extractor.currentText.reserve(TextExtractor::SOFT_FLUSH_BYTES + 512);
+  extractor.currentRuns.reserve(TextExtractor::SOFT_FLUSH_RUNS + 8);
+  extractor.rubyBase.reserve(TextExtractor::RUBY_RESERVE_HINT);
+  extractor.rubyAnnotation.reserve(TextExtractor::RUBY_RESERVE_HINT);
+  if (!lowMemMode_) {
+    pageOffsets_.reserve(640);
+  }
+
+  // Attach transient handlers to the persistent Expat parser.
+  XML_SetDefaultHandlerExpand(build_->parser, TextExtractor::defaultHandler);
+  XML_SetUserData(build_->parser, &extractor);
+  XML_SetElementHandler(build_->parser, TextExtractor::startElement, TextExtractor::endElement);
+  XML_SetCharacterDataHandler(build_->parser, TextExtractor::characterData);
+
+  bool parseOk = true;
+  bool reachedEof = false;
+
+  do {
+    void* const buf = XML_GetBuffer(build_->parser, PARSE_BUFFER_SIZE);
+    if (!buf) {
+      LOG_ERR("VSC", "OOM: parse buffer");
+      parseOk = false;
+      break;
+    }
+    const size_t len = build_->htmlFile.read(buf, PARSE_BUFFER_SIZE);
+    if (len == 0 && build_->htmlFile.available() > 0) {
+      LOG_ERR("VSC", "File read error");
+      parseOk = false;
+      break;
+    }
+    reachedEof = build_->htmlFile.available() == 0;
+    if (XML_ParseBuffer(build_->parser, static_cast<int>(len), reachedEof) == XML_STATUS_ERROR) {
+      LOG_ERR("VSC", "XML parse error at line %lu: %s", XML_GetCurrentLineNumber(build_->parser),
+              XML_ErrorString(XML_GetErrorCode(build_->parser)));
+      parseOk = false;
+      break;
+    }
+    if (sink.hitBudget) {
+      reachedEof = false;  // stopped early by page budget
+      break;
+    }
+  } while (!reachedEof);
+
+  extractor.flushParagraph();
+  sink.flushText(/*isFinalFlush=*/true);
+
   build_->out.flush();
   loan.end();
 
-  if (!ok) {
-    LOG_ERR("VSC", "streamParseAndLayout failed for spine %d", spineIndex);
+  if (!parseOk) {
+    LOG_ERR("VSC", "Parse failed for spine %d", spineIndex);
     abandonBuild();
     return false;
   }
 
-  if (lastBuildDroppedForHeap_) {
-    LOG_ERR("VSC", "Build dropped some glyphs on low heap; keeping partial cache for spine %d", spineIndex);
+  if (lastBuildDroppedForHeap_ = layout.everDroppedForHeap()) {
+    LOG_ERR("VSC", "Build dropped some glyphs on low heap for spine %d", spineIndex);
   }
 
   build_->pagesAlreadyBuilt = static_cast<uint16_t>(pageOffsets_.size());
   pageCount = build_->pagesAlreadyBuilt;
 
-  // A spine item can legitimately produce zero vertical pages (image-only
-  // titlepage.xhtml, decorative wrapper, etc.).  Don't persist a zero-page
-  // cache; return success with pageCount=0 so the reader can skip to the
-  // next spine instead of treating it as a hard build failure.
   if (pageCount == 0) {
     const auto href = epub ? epub->getSpineItem(spineIndex).href : std::string();
     LOG_DBG("VSC", "No renderable vertical pages for spine %d: %s", spineIndex, href.c_str());
     build_->out.close();
     Storage.remove(filePath.c_str());
-    if (!build_->htmlPath.empty()) Storage.remove(build_->htmlPath.c_str());
     build_.reset();
     partial_ = false;
     return true;
   }
 
-  if (hitPageBudget) {
+  if (!reachedEof) {
     partial_ = true;
     LOG_DBG("VSC", "Chunk build paused at %u pages (maxPages=%d)", pageCount, maxPages);
     return true;
