@@ -84,13 +84,10 @@ void drawGlyphs(GfxRenderer& renderer, const VerticalPage& page, int fontId, int
         }
       } else {
         // Rotated punctuation: position and render via 90° CCW rotation.
-        // rCursorY maps to the HORIZONTAL position on screen (screenY = cursorY + left).
-        // Use the cell top (g.y + offsetY) as base, NOT dy which includes the
-        // vertical baseline nudge — that would shift the glyph out of its column.
-        int rotatedYBase = g.y + offsetY;
-        if (shiftType == 4) {
-          rotatedYBase += std::max(1, (cellPx * 3) / 8);
-        }
+        // After CCW rotation, cursorY maps to screenX = cursorY + left → the glyph's
+        // horizontal centre is at cursorY + left + width/2.  Centre that on the cell
+        // centre (dx + cellPx/2), using the actual glyph metrics (gl, gw) instead of
+        // any vertical baseline offset.
         int gl = 0, gw = 0, gt = 0, gh = 0;
         (void)renderer.getGlyphMetrics(fontId, g.codepoint, style, &gl, &gw, &gt, &gh);
         int ascenderExtra = 0;
@@ -104,13 +101,15 @@ void drawGlyphs(GfxRenderer& renderer, const VerticalPage& page, int fontId, int
         } else if (shiftType == 3) {
           nudgeX = cellPx / 12;
           nudgeY = cellPx / 8;
+        } else if (shiftType == 4) {
+          nudgeY = std::max(1, (cellPx * 3) / 8);
         }
         // Rotated 90° CCW: screenX = cursorX + top - glyphY → ink visual
         // centre at cursorX + top - height/2.  Align that with the cell
-        // centre (dx + cellPx/2).  Y uses the cell top as base so the
-        // horizontal centering is not polluted by the vertical baseline nudge.
+        // centre (dx + cellPx/2).
         const int rCursorX = dx + cellPx / 2 + gh / 2 - gt + nudgeX;
-        const int rCursorY = rotatedYBase + cellPx / 2 + gh / 2 + nudgeY;
+        // Horizontal centre alignment: cursorY + left + width/2 = dx + cellPx/2
+        const int rCursorY = dx + cellPx / 2 - gl - gw / 2 + nudgeY;
         std::string utf8Buf;
         encodeCodepoint(g.codepoint, utf8Buf);
         renderer.drawTextRotated90CCW(fontId, rCursorX, rCursorY, utf8Buf.c_str(), black, style);
