@@ -61,52 +61,14 @@ void drawGlyphs(GfxRenderer& renderer, const VerticalPage& page, int fontId, int
     if (g.renderKind == VerticalGlyph::RotatedPunct) {
       const int shiftType = Kinsoku::verticalShiftType(g.codepoint);
       const auto style = static_cast<EpdFontFamily::Style>(g.style);
-      // Ellipsis (…/‥) are rendered as vertical dot stacks rather than rotated glyphs,
-      // because the horizontal-oriented glyph looks too tall/ink-heavy when rotated.
-      if (g.codepoint == 0x2026 || g.codepoint == 0x2025) {
-        int dotDy = dy + std::max(1, (cellPx * 5) / 8);
-        const int dotCount = (g.codepoint == 0x2026) ? 3 : 2;
-        const int dotSize = std::max(1, cellPx / 10);
-        const int gap = std::max(1, cellPx / 10);
-        const int totalH = dotCount * dotSize + (dotCount - 1) * gap;
-        int gl = 0, gw = 0, gt = 0, gh = 0;
-        int ellipsisExtra = 0;
-        if (renderer.getGlyphMetrics(fontId, 0x6F22, style, &gl, &gw, &gt, &gh) && cellPx > 0 && gh > 0) {
-          const int pct = gt * 100 / cellPx;
-          if (pct > 100) ellipsisExtra = cellPx * (pct - 100) / 30;
-        }
-        int startY = dotDy + std::max(1, cellPx / 3) + cellPx / 3 + ellipsisExtra;
-        const int maxStartY = dotDy + std::max(1, cellPx - totalH - 1) + ellipsisExtra;
-        if (startY > maxStartY) startY = maxStartY;
-        const int startX = dx + (cellPx - dotSize) / 2;
-        for (int i = 0; i < dotCount; i++) {
-          renderer.fillRect(startX, startY + i * (dotSize + gap), dotSize, dotSize, black);
-        }
-      } else {
-        // Rotated punctuation: position and render via 90° CCW rotation.
-        // After CCW rotation, cursorY maps to screenX = cursorY + left → the glyph's
-        // horizontal centre is at cursorY + left + width/2.  Centre that on the cell
-        // centre (dx + cellPx/2), using the actual glyph metrics (gl, gw) instead of
-        // any vertical baseline offset.
-        int gl = 0, gw = 0, gt = 0, gh = 0;
-        (void)renderer.getGlyphMetrics(fontId, g.codepoint, style, &gl, &gw, &gt, &gh);
-        int nudgeX = 0;
-        if (shiftType == 3) {
-          nudgeX = cellPx / 12;
-        }
-        // nudgeY: all zero — the centering formula g.y+offsetY+cellPx/2-gl-gw/2
-        // alone handles vertical positioning.  No shift-type specific offset needed.
-        int nudgeY = 0;
-        // Rotated 90° CCW: pixel rotation does NOT swap cursor meaning.
-        // cursorX → screenX (horizontal column), cursorY → screenY (vertical row).
-        // Centering uses the rotated glyph's OWN metrics (gh/gt for horizontal,
-        // gl/gw for vertical) — reference CJK metrics are NOT needed.
-        const int rCursorX = dx + cellPx / 2 + gh / 2 - gt + nudgeX;
-        const int rCursorY = g.y + offsetY + cellPx / 2 - gl - gw / 2 + nudgeY;
-        std::string utf8Buf;
-        encodeCodepoint(g.codepoint, utf8Buf);
-        renderer.drawTextRotated90CCW(fontId, rCursorX, rCursorY, utf8Buf.c_str(), black, style);
+      // Pre-adjust dy for ellipsis and dashes (matcha-reader v98 pattern).
+      int punctDy = dy;
+      if (g.codepoint == 0x2025 || g.codepoint == 0x2026) {
+        punctDy += std::max(1, (cellPx * 7) / 8);
+      } else if (shiftType == 4) {
+        punctDy += std::max(1, (cellPx * 3) / 8);
       }
+      renderer.drawCharVerticalRotatedInCell(fontId, dx, punctDy, cellPx, g.codepoint, shiftType, black, style);
       continue;
     }
 

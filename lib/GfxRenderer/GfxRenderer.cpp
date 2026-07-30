@@ -2142,6 +2142,93 @@ void GfxRenderer::drawTextRotated90CCW(const int fontId, const int x, const int 
   }
 }
 
+void GfxRenderer::drawCharVerticalRotatedInCell(const int fontId, const int cellLeftX, const int cellTopY,
+                                                 const int cellSize, const uint32_t cp, const int shiftType,
+                                                 const bool black, const EpdFontFamily::Style style, int* inkTopOut,
+                                                 int* inkHeightOut) const {
+  if (cp == 0x2026 || cp == 0x2025) {
+    const int dotCount = (cp == 0x2026) ? 3 : 2;
+    const int dotSize = std::max(1, cellSize / 10);
+    const int gap = std::max(1, cellSize / 10);
+    const int totalH = dotCount * dotSize + (dotCount - 1) * gap;
+    const auto fontIt2 = fontMap.find(fontId);
+    int ellipsisExtra = 0;
+    if (fontIt2 != fontMap.end()) {
+      const EpdFontData* fd = fontIt2->second.getData(style);
+      if (fd && cellSize > 0) {
+        const int pct = fd->ascender * 100 / cellSize;
+        if (pct > 100) ellipsisExtra = cellSize * (pct - 100) / 30;
+      }
+    }
+    int startY = cellTopY + std::max(1, cellSize / 3) + cellSize / 3 + ellipsisExtra;
+    const int maxStartY = cellTopY + std::max(1, cellSize - totalH - 1) + ellipsisExtra;
+    if (startY > maxStartY) startY = maxStartY;
+    if (inkTopOut) {
+      *inkTopOut = startY;
+      *inkHeightOut = totalH;
+      return;
+    }
+    const int startX = cellLeftX + (cellSize - dotSize) / 2;
+    for (int i = 0; i < dotCount; i++) {
+      fillRect(startX, startY + i * (dotSize + gap), dotSize, dotSize, black);
+    }
+    return;
+  }
+
+  const auto fontIt = fontMap.find(fontId);
+  if (fontIt == fontMap.end()) { LOG_ERR("GFX", "Font %d not found", fontId); return; }
+  const auto& font = fontIt->second;
+  const EpdGlyph* glyph = font.getGlyph(cp, style);
+  if (!glyph) return;
+
+  const int rotatedW = glyph->height;
+  const int rotatedH = glyph->width;
+
+  const EpdFontData* fontData = font.getData(style);
+  const int ascender = fontData ? fontData->ascender : cellSize;
+  const int fontPct = (cellSize > 0) ? (ascender * 100 / cellSize) : 100;
+  const int extraNudge = (fontPct > 100) ? (cellSize * (fontPct - 100) / 30) : 0;
+  const int baselineExcess = std::max(0, ascender - (cellSize * 6) / 7);
+
+  int drawX = cellLeftX + (cellSize - rotatedW) / 2;
+  int drawY = cellTopY + (cellSize - rotatedH) / 2 + cellSize / 3 + extraNudge * 2;
+
+  if (shiftType == 4) {
+    drawX -= std::max(1, cellSize / 10);
+    drawY += baselineExcess * 2;
+  }
+
+  if (shiftType == 2) {
+    const bool isSquareBracket = (cp == 0x300D || cp == 0x300F || cp == 0x3011 || cp == 0x3015);
+    if (isSquareBracket) {
+      drawX = cellLeftX + (cellSize - rotatedW) / 2 - cellSize / 3;
+    }
+    const int closingBias = std::max(1, cellSize / 6 + cellSize / 4 + extraNudge * 2);
+    drawY = cellTopY + cellSize - rotatedH + closingBias;
+  } else if (shiftType == 3) {
+    const bool inkCentered = (cp == 0xFF08 || cp == 0x3008 || cp == 0x300A);
+    const int openingBias = std::max(1, (cellSize * 3) / 8 + extraNudge + baselineExcess);
+    drawY = cellTopY + cellSize + openingBias;
+    if (!inkCentered) drawX += cellSize / 4;
+  }
+
+  int minX = cellLeftX;
+  int maxX = cellLeftX + cellSize - rotatedW;
+  int minY = cellTopY;
+  int maxY = cellTopY + cellSize * 2;
+  if (shiftType == 2) { minX -= std::max(1, cellSize / 3); minY -= cellSize / 2; }
+  if (shiftType == 3) { maxX += std::max(1, cellSize / 2); }
+  drawX = std::clamp(drawX, minX, maxX);
+  drawY = std::clamp(drawY, minY, maxY);
+
+  if (inkTopOut) { *inkTopOut = drawY; *inkHeightOut = rotatedH; return; }
+
+  const int cursorX = (drawX + rotatedW - 1) - glyph->top;
+  const int cursorY = drawY - glyph->left;
+
+  renderCharImpl<TextRotation::Rotated90CCW>(*this, renderMode, font, cp, cursorX, cursorY, black, style);
+}
+
 uint8_t* GfxRenderer::getFrameBuffer() const { return frameBuffer; }
 
 size_t GfxRenderer::getBufferSize() const { return frameBufferSize; }
