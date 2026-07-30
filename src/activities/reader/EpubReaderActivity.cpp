@@ -1421,7 +1421,6 @@ void EpubReaderActivity::render(RenderLock&& lock) {
       verticalSection_.reset();
       requestUpdate();
       automaticPageTurnActive = false;
-      showBuildError();
       return;
     }
 
