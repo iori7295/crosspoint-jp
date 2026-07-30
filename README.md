@@ -15,7 +15,9 @@ ESP32-C3 (X3) で縦書き・ルビ付き日本語 ePub を安定的に読むた
 - `VSECTION_FILE_VERSION = 98`（全キャッシュ互換）
 
 ### 日本語フォント対応
-- Noto Sans CJK JP / Noto Serif CJK JP / GenEi Koburi Mincho のダウンロード・選択
+- 全8ファミリーをダウンロード・選択可能（Noto Sans CJK JP / Noto Serif CJK JP /
+  GenEi Koburi Mincho / Shippori Mincho / Zen Old Mincho / Noto Serif JP /
+  OradanoGSRR / GenEi Chikugo Mincho）
 - SDカードフォント自動フォールバック（フォールバックチェーン）
 - CJK glyph prewarm + 48 slot overflow ring
 - フォントキャッシュのライフサイクル管理（`unloadFonts`）
