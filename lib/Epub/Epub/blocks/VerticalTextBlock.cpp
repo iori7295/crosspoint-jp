@@ -109,7 +109,7 @@ void drawGlyphs(GfxRenderer& renderer, const VerticalPage& page, int fontId, int
         // centre (dx + cellPx/2).
         const int rCursorX = dx + cellPx / 2 + gh / 2 - gt + nudgeX;
         // Horizontal centre alignment: cursorY + left + width/2 = dx + cellPx/2
-        const int rCursorY = dx + cellPx / 2 - gl - gw / 2 + nudgeY;
+        const int rCursorY = g.y + offsetY + cellPx / 2 - gl - gw / 2 + nudgeY;
         std::string utf8Buf;
         encodeCodepoint(g.codepoint, utf8Buf);
         renderer.drawTextRotated90CCW(fontId, rCursorX, rCursorY, utf8Buf.c_str(), black, style);
