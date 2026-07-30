@@ -175,7 +175,9 @@ class VerticalParsedText {
   // this is never cleared by reset(): the section build reads it at the end, because a build
   // that dropped content produced sparse pages and must not be persisted as a VALID cache --
   // that makes the truncation permanent. Fresh object per build, so no explicit clear needed.
+  // With the persistent BuildState pipeline we now clear explicitly before each chunk.
   bool everDroppedForHeap() const { return everDroppedForHeap_; }
+  void clearDropFlag() { everDroppedForHeap_ = false; }
   // Pin stream_'s backing store once at build start, while the heap is freshest. Mid-build
   // growth (alloc-copy-free every few dozen entries) interleaved with ruby-string churn walks
   // the buffer through the heap and shreds the largest contiguous block -- observed on a real

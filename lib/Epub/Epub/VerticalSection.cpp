@@ -937,6 +937,19 @@ struct LayoutPageSink final : ParagraphSink {
       failed = true;
       return;
     }
+
+    // If glyph dropping was detected during this page's layout, discard the
+    // page and stop.  The reader gets all earlier pages; the build resumes
+    // from the same frontier on the next buildSomeMore call.
+    if (layout.everDroppedForHeap()) {
+      pageOffsets.pop_back();
+      LOG_DBG("VSC", "Glyph drop detected — discarding page %zu", pageOffsets.size());
+      hitBudget = true;
+      failed = true;
+      if (parserRef && *parserRef) XML_StopParser(*parserRef, XML_TRUE);
+      return;
+    }
+
     if (pageBudget > 0 && --pageBudget == 0) {
       LOG_DBG("VSC", "Page budget reached, stopping chunk");
       hitBudget = true;
@@ -1059,6 +1072,7 @@ struct VerticalSection::BuildState {
   bool eof = false;
 
   uint16_t pagesAlreadyBuilt = 0;
+  uint8_t frontierRetryCount = 0;  // how many times we hit glyph drop at this build frontier
 
   ~BuildState() { destroyXmlParser(parser); }
 };
@@ -1223,7 +1237,6 @@ bool VerticalSection::startBuild(const int fontId, const uint16_t viewportWidth,
   partial_ = false;
   pageOffsets_.clear();
   loadedPageIndex_ = -1;
-  lastBuildDroppedForHeap_ = false;
   return true;
 }
 
@@ -1231,6 +1244,23 @@ bool VerticalSection::buildSomeMore(int maxPages) {
   if (!build_) return false;
 
   GfxRenderer::FrameBufferLoan loan(renderer);
+
+  // If the frontier has been retried too many times without progress,
+  // abandon the build — the heap is too fragmented to continue.
+  if (build_->frontierRetryCount >= 5) {
+    LOG_ERR("VSC", "Frontier retry limit reached (%u), abandoning spine %d",
+            static_cast<unsigned>(build_->frontierRetryCount), spineIndex);
+    abandonBuild();
+    return false;
+  }
+
+  // Light retry mode: smaller budget so the heap has a chance to recover
+  // between chunks.
+  if (build_->frontierRetryCount > 0 && maxPages > 2) {
+    maxPages = 2;
+    LOG_DBG("VSC", "Frontier retry %u, budget reduced to %d",
+            static_cast<unsigned>(build_->frontierRetryCount), maxPages);
+  }
 
   const size_t pagesBefore = pageOffsets_.size();
   const size_t targetPages = (maxPages <= 0)
@@ -1240,6 +1270,9 @@ bool VerticalSection::buildSomeMore(int maxPages) {
   build_->sink->pagesToSkip = static_cast<size_t>(pagesBefore);
   build_->sink->pageBudget = (maxPages > 0) ? maxPages : 0;
   build_->sink->hitBudget = false;
+
+  // Reset the one-shot glyph-drop guard for this chunk.
+  build_->layout->clearDropFlag();
 
   // If the parser was suspended by XML_StopParser (page budget reached),
   // resume it before feeding the next chunk.
@@ -1279,9 +1312,12 @@ bool VerticalSection::buildSomeMore(int maxPages) {
     build_->sink->flushText(/*isFinalFlush=*/true);
   }
 
-  lastBuildDroppedForHeap_ = build_->layout->everDroppedForHeap();
-  if (lastBuildDroppedForHeap_) {
-    LOG_ERR("VSC", "Build dropped some glyphs on low heap for spine %d", spineIndex);
+  bool hitDropThisCall = build_->layout->everDroppedForHeap();
+
+  if (hitDropThisCall) {
+    build_->frontierRetryCount++;
+    LOG_ERR("VSC", "Build dropped glyphs for spine %d (retry=%u)", spineIndex,
+            static_cast<unsigned>(build_->frontierRetryCount));
   }
 
   build_->pagesAlreadyBuilt = static_cast<uint16_t>(pageOffsets_.size());

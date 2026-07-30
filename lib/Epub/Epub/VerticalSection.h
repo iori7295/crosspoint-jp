@@ -33,7 +33,6 @@ class VerticalSection {
   mutable VerticalPage loadedPage_;
   mutable int loadedPageIndex_ = -1;
 
-  bool lastBuildDroppedForHeap_ = false;
   bool partial_ = false;
 
   struct BuildState;
