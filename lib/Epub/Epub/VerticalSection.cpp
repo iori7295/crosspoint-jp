@@ -1327,9 +1327,13 @@ bool VerticalSection::buildSomeMore(int maxPages) {
   loan.end();
 
   if (build_->sink->frontierStop && !build_->eof) {
-    LOG_ERR("VSC", "Frontier stop at %u pages — suspending build for spine %d",
+    // Keep the parser/pipeline alive so the next buildSomeMore call can
+    // resume from this frontier without re-creating the Expat parser
+    // (which may fail on a fragmented heap).  The partial cache file is
+    // not finalised until the activity exits (suspendBuild in ~VerticalSection).
+    partial_ = true;
+    LOG_ERR("VSC", "Frontier at %u pages — keeping build alive for spine %d",
             static_cast<unsigned>(pageOffsets_.size()), spineIndex);
-    suspendBuild();
     return true;
   }
 
