@@ -98,9 +98,6 @@ void drawGlyphs(GfxRenderer& renderer, const VerticalPage& page, int fontId, int
         // - gl - gw/2) so no vertical nudge is needed for most punctuation.  Only
         // shiftType 4 (dashes) need extra horizontal offset after rotation.
         int nudgeY = 0;
-        if (shiftType == 4) {
-          nudgeY = std::max(1, (cellPx * 3) / 8);
-        }
         // Rotated 90° CCW: pixel rotation does NOT swap cursor meaning.
         // cursorX → screenX (horizontal column), cursorY → screenY (vertical row).
         // Centering uses the rotated glyph's OWN metrics (gh/gt for horizontal,
