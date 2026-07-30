@@ -42,45 +42,6 @@
       ]
     },
     {
-      "name": "GenEiKoburiMincho",
-      "description": "\u6e90\u668e\u3053\u3076\u308a\u660e\u671d (GenEi Koburi Mincho)",
-      "styles": [
-        "regular"
-      ],
-      "files": [
-        {
-          "name": "GenEiKoburiMincho_10.cpfont",
-          "size": 1484573,
-          "crc32": 3086622831
-        },
-        {
-          "name": "GenEiKoburiMincho_12.cpfont",
-          "size": 2040710,
-          "crc32": 2066299908
-        },
-        {
-          "name": "GenEiKoburiMincho_14.cpfont",
-          "size": 2598809,
-          "crc32": 611941871
-        },
-        {
-          "name": "GenEiKoburiMincho_16.cpfont",
-          "size": 3241873,
-          "crc32": 1256023820
-        },
-        {
-          "name": "GenEiKoburiMincho_18.cpfont",
-          "size": 4280305,
-          "crc32": 4274136343
-        },
-        {
-          "name": "GenEiKoburiMincho_8.cpfont",
-          "size": 1111735,
-          "crc32": 3013400934
-        }
-      ]
-    },
-    {
       "name": "NotoSansCJKjp",
       "description": "\u30b4\u30b7\u30c3\u30af\u4f53 (Noto Sans CJK JP)",
       "styles": [
@@ -197,45 +158,6 @@
           "name": "NotoSerifJP_8.cpfont",
           "size": 2414563,
           "crc32": 1252258402
-        }
-      ]
-    },
-    {
-      "name": "OradanoGSRR",
-      "description": "\u304a\u3089\u3060\u306e\u660e\u671dGSRR (OradanoGSRR)",
-      "styles": [
-        "regular"
-      ],
-      "files": [
-        {
-          "name": "OradanoGSRR_10.cpfont",
-          "size": 659135,
-          "crc32": 2579800112
-        },
-        {
-          "name": "OradanoGSRR_12.cpfont",
-          "size": 832685,
-          "crc32": 2868958217
-        },
-        {
-          "name": "OradanoGSRR_14.cpfont",
-          "size": 1037623,
-          "crc32": 3981203168
-        },
-        {
-          "name": "OradanoGSRR_16.cpfont",
-          "size": 1268795,
-          "crc32": 756228352
-        },
-        {
-          "name": "OradanoGSRR_18.cpfont",
-          "size": 1601106,
-          "crc32": 4051262691
-        },
-        {
-          "name": "OradanoGSRR_8.cpfont",
-          "size": 513437,
-          "crc32": 78701406
         }
       ]
     },
