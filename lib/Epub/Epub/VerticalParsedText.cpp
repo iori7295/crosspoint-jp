@@ -22,10 +22,8 @@ namespace {
 // hundreds to 1000+ separate reallocations for the same data -- which fragments the heap far
 // worse (a measured ~22KB net loss) than the single bulk reserve it was "protecting" against.
 // The getMaxAllocHeap() check already guarantees the reserve() itself succeeds; this constant is
-// only cushion for OTHER allocations during the build, and while a chapter build runs the rest of
-// the app is quiescent (largest concurrent needs: SD write buffers and log lines, low KBs). 8KB
-// matches SMALL_ALLOC_MARGIN, the equivalent cushion used for per-push growth in this file.
-constexpr uint32_t MIN_FREE_HEAP_FOR_RESERVE = 8 * 1024;
+// cushion for OTHER allocations during the build: SD write buffers, log lines.
+constexpr uint32_t MIN_FREE_HEAP_FOR_RESERVE = 2 * 1024;
 }  // namespace
 
 namespace {
@@ -592,10 +590,38 @@ std::vector<VerticalPage> VerticalParsedText::layoutPages(void* ctx, PageReadyCa
   // process on failure under -fno-exceptions -- confirmed via a real device crash inside this
   // exact reserve, immediately after the *previous* page was pushed (which can itself burst
   // memory use during its own relocation). Check the request against free heap every time.
+  auto currentSeedGlyphReserve = [&]() -> size_t {
+    const uint32_t f = ESP.getMaxAllocHeap();
+    if (f < 5 * 1024) return 0;
+    if (f < 7 * 1024) return std::min<size_t>(glyphsPerPage, 2);
+    if (f < 9 * 1024) return std::min<size_t>(glyphsPerPage, 4);
+    if (f < 12 * 1024) return std::min<size_t>(glyphsPerPage, 8);
+    return std::min<size_t>(glyphsPerPage, 32);
+  };
+  auto currentGlyphMinHeadroom = [&]() -> uint32_t {
+    const uint32_t f = ESP.getMaxAllocHeap();
+    if (f < 6 * 1024) return 128;
+    if (f < 10 * 1024) return 256;
+    return 512;
+  };
+  auto currentGlyphLinearStep = [&]() -> size_t {
+    const uint32_t f = ESP.getMaxAllocHeap();
+    if (f < 6 * 1024) return 2;
+    if (f < 10 * 1024) return 4;
+    if (f < 16 * 1024) return 8;
+    return 16;
+  };
+
   auto reservePageGlyphs = [&](VerticalPage& p) {
     const size_t requestBytes = glyphsPerPage * sizeof(VerticalGlyph);
     if (ESP.getMaxAllocHeap() >= requestBytes + MIN_FREE_HEAP_FOR_RESERVE) {
       p.glyphs.reserve(glyphsPerPage);
+      return;
+    }
+    const size_t seed = currentSeedGlyphReserve();
+    const size_t seedBytes = seed * sizeof(VerticalGlyph);
+    if (seed > 0 && ESP.getMaxAllocHeap() >= seedBytes + currentGlyphMinHeadroom()) {
+      p.glyphs.reserve(seed);
     } else {
       LOG_ERR("VPT", "Skipping page glyphs reserve (%u bytes doesn't fit, free=%u); growing incrementally",
               static_cast<unsigned>(requestBytes), ESP.getMaxAllocHeap());
@@ -634,7 +660,7 @@ std::vector<VerticalPage> VerticalParsedText::layoutPages(void* ctx, PageReadyCa
   int columnYShift = 0;
   uint16_t shiftColumn = UINT16_MAX;
 
-  auto pushGlyph = [this, &columnYShift, &shiftColumn](std::vector<VerticalGlyph>& glyphs, VerticalGlyph g) {
+  auto pushGlyph = [this, &columnYShift, &shiftColumn, &currentGlyphLinearStep](std::vector<VerticalGlyph>& glyphs, VerticalGlyph g) {
     if (g.column != shiftColumn) {
       columnYShift = 0;
       shiftColumn = g.column;
@@ -647,8 +673,8 @@ std::vector<VerticalPage> VerticalParsedText::layoutPages(void* ctx, PageReadyCa
       glyphs.push_back(g);
       return true;
     }
-    constexpr uint32_t SMALL_ALLOC_MARGIN = 8 * 1024;  // headroom for the rest of the app, not the reserve() margin
-    constexpr size_t LINEAR_GROWTH_STEP = 16;          // elements; keeps a stalled page's retries cheap
+    constexpr uint32_t SMALL_ALLOC_MARGIN = 8 * 1024;
+    const size_t linearStep = currentGlyphLinearStep();
 
     const size_t doubledCapacity = glyphs.capacity() == 0 ? 1 : glyphs.capacity() * 2;
     const size_t doubledBytes = doubledCapacity * sizeof(VerticalGlyph);
@@ -658,7 +684,7 @@ std::vector<VerticalPage> VerticalParsedText::layoutPages(void* ctx, PageReadyCa
       return true;
     }
 
-    const size_t linearCapacity = glyphs.capacity() + LINEAR_GROWTH_STEP;
+    const size_t linearCapacity = glyphs.capacity() + linearStep;
     const size_t linearBytes = linearCapacity * sizeof(VerticalGlyph);
     if (ESP.getMaxAllocHeap() >= linearBytes + SMALL_ALLOC_MARGIN) {
       glyphs.reserve(linearCapacity);
