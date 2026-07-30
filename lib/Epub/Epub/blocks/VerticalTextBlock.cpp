@@ -94,9 +94,8 @@ void drawGlyphs(GfxRenderer& renderer, const VerticalPage& page, int fontId, int
         if (shiftType == 3) {
           nudgeX = cellPx / 12;
         }
-        // nudgeY: centering is handled by the formula below (g.y + offsetY + cellPx/2
-        // - gl - gw/2) so no vertical nudge is needed for most punctuation.  Only
-        // shiftType 4 (dashes) need extra horizontal offset after rotation.
+        // nudgeY: all zero — the centering formula g.y+offsetY+cellPx/2-gl-gw/2
+        // alone handles vertical positioning.  No shift-type specific offset needed.
         int nudgeY = 0;
         // Rotated 90° CCW: pixel rotation does NOT swap cursor meaning.
         // cursorX → screenX (horizontal column), cursorY → screenY (vertical row).
