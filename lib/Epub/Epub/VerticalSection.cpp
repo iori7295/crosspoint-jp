@@ -1279,6 +1279,10 @@ bool VerticalSection::buildSomeMore(int maxPages) {
   build_->sink->hitBudget = false;
   build_->sink->frontierStop = false;
 
+  // Clear the sticky glyph-drop flag so a previously-dropped page can be
+  // retried on this chunk rather than being discarded immediately again.
+  build_->layout->clearDropFlag();
+
   // If the parser was suspended by XML_StopParser (page budget reached),
   // resume it before feeding the next chunk.
   if (!build_->eof && build_->parser) {
