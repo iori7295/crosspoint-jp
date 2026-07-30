@@ -11,33 +11,33 @@
       "files": [
         {
           "name": "GenEiChikuMin_10.cpfont",
-          "size": 1544627,
-          "crc32": 1330162827
+          "size": 1553018,
+          "crc32": 1108419943
         },
         {
           "name": "GenEiChikuMin_12.cpfont",
-          "size": 2004023,
-          "crc32": 1010241801
+          "size": 2013889,
+          "crc32": 1714870522
         },
         {
           "name": "GenEiChikuMin_14.cpfont",
-          "size": 2603592,
-          "crc32": 934890276
+          "size": 2615183,
+          "crc32": 1803817537
         },
         {
           "name": "GenEiChikuMin_16.cpfont",
-          "size": 3339842,
-          "crc32": 4162102002
+          "size": 3353495,
+          "crc32": 3336336099
         },
         {
           "name": "GenEiChikuMin_18.cpfont",
-          "size": 4255754,
-          "crc32": 800301616
+          "size": 4271879,
+          "crc32": 3044239912
         },
         {
           "name": "GenEiChikuMin_8.cpfont",
-          "size": 1155874,
-          "crc32": 4019697959
+          "size": 1163027,
+          "crc32": 3110409638
         }
       ]
     },
@@ -170,33 +170,33 @@
       "files": [
         {
           "name": "NotoSerifJP_10.cpfont",
-          "size": 3298481,
-          "crc32": 3814396576
+          "size": 3327468,
+          "crc32": 1723497997
         },
         {
           "name": "NotoSerifJP_12.cpfont",
-          "size": 4491096,
-          "crc32": 3854798816
+          "size": 4523242,
+          "crc32": 3213585108
         },
         {
           "name": "NotoSerifJP_14.cpfont",
-          "size": 5823605,
-          "crc32": 3123348287
+          "size": 5859797,
+          "crc32": 926283786
         },
         {
           "name": "NotoSerifJP_16.cpfont",
-          "size": 7325101,
-          "crc32": 1684720450
+          "size": 7365674,
+          "crc32": 210148515
         },
         {
           "name": "NotoSerifJP_18.cpfont",
-          "size": 9084089,
-          "crc32": 3671598903
+          "size": 9129637,
+          "crc32": 4109311534
         },
         {
           "name": "NotoSerifJP_8.cpfont",
-          "size": 2388290,
-          "crc32": 3769211800
+          "size": 2414563,
+          "crc32": 1252258402
         }
       ]
     },
@@ -209,33 +209,33 @@
       "files": [
         {
           "name": "OradanoGSRR_10.cpfont",
-          "size": 654323,
-          "crc32": 3123536130
+          "size": 659135,
+          "crc32": 2579800112
         },
         {
           "name": "OradanoGSRR_12.cpfont",
-          "size": 826637,
-          "crc32": 2896781286
+          "size": 832685,
+          "crc32": 2868958217
         },
         {
           "name": "OradanoGSRR_14.cpfont",
-          "size": 1030198,
-          "crc32": 1699274953
+          "size": 1037623,
+          "crc32": 3981203168
         },
         {
           "name": "OradanoGSRR_16.cpfont",
-          "size": 1259734,
-          "crc32": 3661218287
+          "size": 1268795,
+          "crc32": 756228352
         },
         {
           "name": "OradanoGSRR_18.cpfont",
-          "size": 1589817,
-          "crc32": 288148404
+          "size": 1601106,
+          "crc32": 4051262691
         },
         {
           "name": "OradanoGSRR_8.cpfont",
-          "size": 509696,
-          "crc32": 148838426
+          "size": 513437,
+          "crc32": 78701406
         }
       ]
     },
@@ -249,33 +249,33 @@
       "files": [
         {
           "name": "ShipporiMincho_10.cpfont",
-          "size": 3409216,
-          "crc32": 2786668022
+          "size": 3419754,
+          "crc32": 1067729438
         },
         {
           "name": "ShipporiMincho_12.cpfont",
-          "size": 4558238,
-          "crc32": 1856709555
+          "size": 4572298,
+          "crc32": 4052909556
         },
         {
           "name": "ShipporiMincho_14.cpfont",
-          "size": 5968290,
-          "crc32": 3304103902
+          "size": 5985983,
+          "crc32": 3299288202
         },
         {
           "name": "ShipporiMincho_16.cpfont",
-          "size": 7507627,
-          "crc32": 1162369646
+          "size": 7529567,
+          "crc32": 153256678
         },
         {
           "name": "ShipporiMincho_18.cpfont",
-          "size": 9310013,
-          "crc32": 3444373912
+          "size": 9337180,
+          "crc32": 2575876080
         },
         {
           "name": "ShipporiMincho_8.cpfont",
-          "size": 2406916,
-          "crc32": 3800095821
+          "size": 2415001,
+          "crc32": 4102337918
         }
       ]
     },
@@ -288,33 +288,33 @@
       "files": [
         {
           "name": "ZenOldMincho_10.cpfont",
-          "size": 851292,
-          "crc32": 3601402587
+          "size": 857877,
+          "crc32": 164281704
         },
         {
           "name": "ZenOldMincho_12.cpfont",
-          "size": 1143782,
-          "crc32": 1277858479
+          "size": 1151785,
+          "crc32": 3575230428
         },
         {
           "name": "ZenOldMincho_14.cpfont",
-          "size": 1484675,
-          "crc32": 2027247229
+          "size": 1494367,
+          "crc32": 709028960
         },
         {
           "name": "ZenOldMincho_16.cpfont",
-          "size": 1856523,
-          "crc32": 3076403383
+          "size": 1868357,
+          "crc32": 2173865701
         },
         {
           "name": "ZenOldMincho_18.cpfont",
-          "size": 2305809,
-          "crc32": 1878862696
+          "size": 2319847,
+          "crc32": 1917571502
         },
         {
           "name": "ZenOldMincho_8.cpfont",
-          "size": 622192,
-          "crc32": 2771718521
+          "size": 627858,
+          "crc32": 3067082850
         }
       ]
     }

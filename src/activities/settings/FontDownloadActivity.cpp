@@ -24,6 +24,9 @@ FontDownloadActivity::FontDownloadActivity(GfxRenderer& renderer, MappedInputMan
 
 void FontDownloadActivity::onEnter() {
   Activity::onEnter();
+  // Free SD card font heap before WiFi starts (WiFi task creation needs
+  // contiguous heap and can crash if fonts are still resident).
+  sdFontSystem.unloadFonts(renderer);
   WiFi.mode(WIFI_STA);
   startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput),
                          [this](const ActivityResult& result) { onWifiSelectionComplete(!result.isCancelled); });
