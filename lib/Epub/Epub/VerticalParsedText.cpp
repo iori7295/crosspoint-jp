@@ -457,6 +457,18 @@ void VerticalParsedText::addAnnotatedParagraph(const std::vector<RubyRun>& runs,
       }
     } else {
       // Decode ruby codepoints to distribute evenly across base characters.
+      const size_t rubyBytes = run.rubyText.size() * sizeof(uint32_t);
+      if (ESP.getMaxAllocHeap() < rubyBytes + MIN_FREE_HEAP_FOR_RESERVE) {
+        LOG_ERR("VPT", "Ruby reserve failed (%u bytes need, free=%u); dropping ruby annotation",
+                static_cast<unsigned>(rubyBytes), ESP.getMaxAllocHeap());
+        everDroppedForHeap_ = true;
+        for (size_t k = 0; k < baseCps.size(); k++) {
+          if (!canPushStreamChar()) return;
+          stream_.push_back(PendingChar{
+              baseCps[k], paragraphIndex, static_cast<uint32_t>(baseOffsets[k]), run.style, run.emphasis, {}});
+        }
+        return;
+      }
       std::vector<uint32_t> rubyCps;
       rubyCps.reserve(run.rubyText.size());
       {
@@ -954,9 +966,9 @@ std::vector<VerticalPage> VerticalParsedText::layoutPages(void* ctx, PageReadyCa
   // dropping -- not sooner. A bigger headroom here inflated the page count with premature
   // breaks (device evidence: breaks at 81-148 glyphs against dips the +16 step survived).
   auto pageVectorCanTakeMore = [&]() -> bool {
-    constexpr size_t GROWTH_STEP = 16;  // = pushGlyph's LINEAR_GROWTH_STEP
-    if (page.glyphs.size() + GROWTH_STEP <= page.glyphs.capacity()) return true;
-    const size_t growBytes = (page.glyphs.capacity() + GROWTH_STEP) * sizeof(VerticalGlyph);
+    const size_t step = currentGlyphLinearStep();
+    if (page.glyphs.size() + step <= page.glyphs.capacity()) return true;
+    const size_t growBytes = (page.glyphs.capacity() + step) * sizeof(VerticalGlyph);
     return ESP.getMaxAllocHeap() >= growBytes;
   };
 
