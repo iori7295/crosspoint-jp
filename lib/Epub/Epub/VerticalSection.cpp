@@ -1317,12 +1317,12 @@ bool VerticalSection::buildSomeMore(int maxPages) {
   loan.end();
 
   if (build_->sink->frontierStop && !build_->eof) {
-    // Keep the parser/pipeline alive so the next buildSomeMore call can
-    // resume from this frontier without re-creating the Expat parser
-    // (which may fail on a fragmented heap).  The partial cache file is
-    // not finalised until the activity exits (suspendBuild in ~VerticalSection).
-    partial_ = true;
-    LOG_ERR("VSC", "Frontier at %u pages — keeping build alive for spine %d",
+    // Finalize the partial cache immediately so getPage() can read from the
+    // closed .bin instead of a stale .part that's still open for writing.
+    // The FAT32 driver may return cached (old) data when a write handle is
+    // open, causing readPage() to fail and the entire chapter to be rebuilt.
+    suspendBuild();
+    LOG_ERR("VSC", "Frontier at %u pages — partial finalised for spine %d",
             static_cast<unsigned>(pageOffsets_.size()), spineIndex);
     return true;
   }
