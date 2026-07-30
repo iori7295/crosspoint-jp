@@ -55,6 +55,7 @@ struct VerticalPage {
   std::vector<VerticalGlyph> glyphs;
   uint16_t columnCount = 0;
   uint16_t rowsPerColumn = 0;
+  uint8_t forcedBreaks = 0;  // how many heap-driven page breaks occurred while filling this page
   // If non-empty, this page is an image page — render the image instead of glyphs.
   std::string imagePath;
   int16_t imageWidth = 0;

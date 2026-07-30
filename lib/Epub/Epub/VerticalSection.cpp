@@ -630,6 +630,7 @@ struct LayoutPageSink final : ParagraphSink {
   size_t pagesToSkip = 0;
   int pageBudget = 0;
   bool hitBudget = false;
+  bool frontierStop = false;  // set by writeOne when a page is too sparse (forced break + low heap)
   XML_Parser* parserRef = nullptr;  // points to BuildState::parser
 
   // ~1-2 screens of text per layout batch. A batch boundary lands between paragraphs, which
@@ -929,6 +930,10 @@ struct LayoutPageSink final : ParagraphSink {
 
   void writeOne(const VerticalPage& p) {
     if (pagesToSkip > 0) { pagesToSkip--; return; }
+    if (frontierStop) {
+      // Already committed to stopping; just drain the callback stream.
+      return;
+    }
 
     pageOffsets.push_back(static_cast<uint32_t>(out.position()));
     warmAdvanceTableForPage(p, fontId);
@@ -939,13 +944,25 @@ struct LayoutPageSink final : ParagraphSink {
     }
 
     // If glyph dropping was detected during this page's layout, discard the
-    // page and stop.  The reader gets all earlier pages; the build resumes
-    // from the same frontier on the next buildSomeMore call.
+    // page and stop — the section becomes partial at the previous frontier.
     if (layout.everDroppedForHeap()) {
+      frontierStop = true;
       pageOffsets.pop_back();
-      LOG_DBG("VSC", "Glyph drop detected — discarding page %zu", pageOffsets.size());
-      hitBudget = true;
-      failed = true;
+      LOG_ERR("VSC", "Glyph drop detected — discarding page %zu", pageOffsets.size());
+      if (parserRef && *parserRef) XML_StopParser(*parserRef, XML_TRUE);
+      return;
+    }
+
+    // Low-heap forced break: the page split at an unnatural position.  Treat
+    // it as a frontier so the reader gets only well-formed pages.  12 KB is
+    // the threshold where forced breaks start producing visible artefacts
+    // (confirmed on a real device with 210 KB CJK chapters).
+    const uint32_t ma = ESP.getMaxAllocHeap();
+    if (p.forcedBreaks > 0 && ma < 12 * 1024) {
+      frontierStop = true;
+      pageOffsets.pop_back();
+      LOG_ERR("VSC", "Frontier at page %zu (forcedBreaks=%u maxAlloc=%u)",
+              pageOffsets.size(), p.forcedBreaks, ma);
       if (parserRef && *parserRef) XML_StopParser(*parserRef, XML_TRUE);
       return;
     }
@@ -1270,6 +1287,7 @@ bool VerticalSection::buildSomeMore(int maxPages) {
   build_->sink->pagesToSkip = static_cast<size_t>(pagesBefore);
   build_->sink->pageBudget = (maxPages > 0) ? maxPages : 0;
   build_->sink->hitBudget = false;
+  build_->sink->frontierStop = false;
 
   // Reset the one-shot glyph-drop guard for this chunk.
   build_->layout->clearDropFlag();
@@ -1306,6 +1324,13 @@ bool VerticalSection::buildSomeMore(int maxPages) {
 
   build_->out.flush();
   loan.end();
+
+  if (build_->sink->frontierStop && !build_->eof) {
+    LOG_ERR("VSC", "Frontier stop at %u pages — suspending build for spine %d",
+            static_cast<unsigned>(pageOffsets_.size()), spineIndex);
+    suspendBuild();
+    return true;
+  }
 
   if (build_->eof) {
     build_->extractor.flushParagraph();

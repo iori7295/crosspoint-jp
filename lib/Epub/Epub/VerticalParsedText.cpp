@@ -804,6 +804,7 @@ std::vector<VerticalPage> VerticalParsedText::layoutPages(void* ctx, PageReadyCa
     LOG_DBG("VPT", "Forcing page break to avoid glyph drop (free=%u)", ESP.getMaxAllocHeap());
     forcedBreakCount_++;
     currentPageForcedBreaks_++;
+    page.forcedBreaks++;
     column = columnsPerPage;
     finalizePageIfNeeded();
 
