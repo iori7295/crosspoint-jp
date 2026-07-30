@@ -751,6 +751,19 @@ std::vector<VerticalPage> VerticalParsedText::layoutPages(void* ctx, PageReadyCa
 
   auto finalizePageIfNeeded = [&]() {
     if (column >= columnsPerPage) {
+      // Capture diagnostics before the page is moved away.
+      lastPageForcedBreaks_ = currentPageForcedBreaks_;
+      lastPageDroppedForHeap_ = everDroppedForHeap_;
+      lastPageGlyphCount_ = static_cast<uint16_t>(page.glyphs.size());
+      currentPageForcedBreaks_ = 0;
+      if (lastPageForcedBreaks_ > 0 || lastPageDroppedForHeap_) {
+        LOG_DBG("VPT", "Page done: glyphs=%u forcedBreaks=%u dropped=%d free=%u",
+                static_cast<unsigned>(lastPageGlyphCount_),
+                static_cast<unsigned>(lastPageForcedBreaks_),
+                lastPageDroppedForHeap_ ? 1 : 0,
+                ESP.getMaxAllocHeap());
+      }
+
       pages.push_back(std::move(page));
       anyPageEverProduced_ = true;
       if (onPageReady) {
@@ -784,11 +797,13 @@ std::vector<VerticalPage> VerticalParsedText::layoutPages(void* ctx, PageReadyCa
       LOG_ERR("VPT", "Ultra-low heap (%u); dropping one glyph directly (free=%u)",
               ESP.getMaxAllocHeap(), ESP.getMaxAllocHeap());
       everDroppedForHeap_ = true;
+      lastPageDroppedForHeap_ = true;
       return true;
     }
 
     LOG_DBG("VPT", "Forcing page break to avoid glyph drop (free=%u)", ESP.getMaxAllocHeap());
     forcedBreakCount_++;
+    currentPageForcedBreaks_++;
     column = columnsPerPage;
     finalizePageIfNeeded();
 
@@ -804,6 +819,7 @@ std::vector<VerticalPage> VerticalParsedText::layoutPages(void* ctx, PageReadyCa
     LOG_ERR("VPT", "OOM after one forced page break (free=%u); dropping one glyph",
             ESP.getMaxAllocHeap());
     everDroppedForHeap_ = true;
+    lastPageDroppedForHeap_ = true;
     return true;
   };
 

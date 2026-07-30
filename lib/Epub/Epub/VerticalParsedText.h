@@ -178,6 +178,10 @@ class VerticalParsedText {
   // With the persistent BuildState pipeline we now clear explicitly before each chunk.
   bool everDroppedForHeap() const { return everDroppedForHeap_; }
   void clearDropFlag() { everDroppedForHeap_ = false; }
+  // Per-page diagnostics (reset each finalizePageIfNeeded call).
+  uint8_t lastPageForcedBreaks() const { return lastPageForcedBreaks_; }
+  bool lastPageDroppedForHeap() const { return lastPageDroppedForHeap_; }
+  uint16_t lastPageGlyphCount() const { return lastPageGlyphCount_; }
   // Pin stream_'s backing store once at build start, while the heap is freshest. Mid-build
   // growth (alloc-copy-free every few dozen entries) interleaved with ruby-string churn walks
   // the buffer through the heap and shreds the largest contiguous block -- observed on a real
@@ -224,6 +228,11 @@ class VerticalParsedText {
   // canPushStreamChar()).
   bool oom_ = false;
   bool everDroppedForHeap_ = false;  // see everDroppedForHeap()
+  // Per-page diagnostics (reset each finalizePageIfNeeded call).
+  uint8_t lastPageForcedBreaks_ = 0;
+  bool lastPageDroppedForHeap_ = false;
+  uint16_t lastPageGlyphCount_ = 0;
+  uint8_t currentPageForcedBreaks_ = 0;  // resets per page
 
   // The page currently being filled by layoutPages(), plus its fill position -- persists ACROSS
   // layoutPages() calls (when isFinalFlush=false) so a batch boundary landing mid-page continues
