@@ -32,7 +32,10 @@ namespace {
 // v52: not a format change -- forces a rebuild of vertical caches that were built while the CSS
 // rule table was still held resident (see Epub::load): its heap fragmentation made the layout's
 // stream reserve fail on long chapters, silently truncating them into sparse pages ON DISK.
-constexpr uint8_t VSECTION_FILE_VERSION = 59;
+// v78: PR #12 (rotated-run loop fix) also fixed encodeCp for supplementary-plane codepoints
+// v80: not a format change -- invalidates best-effort caches built while the resident write
+//      handler held the CSS rule table alive (VerticalParsedText::preallocateStream).
+constexpr uint8_t VSECTION_FILE_VERSION = 98;
 
 // Helper to detect gaiji (external character) image paths.  Gaiji images are
 // small PNGs used for rare kanji not covered by the font; missing them should
@@ -953,21 +956,6 @@ struct LayoutPageSink final : ParagraphSink {
       return;
     }
 
-    // Low-heap forced break: the page split at an unnatural position.  Treat
-    // it as a frontier so the reader gets only well-formed pages.  12 KB is
-    // the threshold where forced breaks start producing visible artefacts
-    // (confirmed on a real device with 210 KB CJK chapters).
-    const uint32_t ma = ESP.getMaxAllocHeap();
-    if (p.forcedBreaks > 0 && ma < 12 * 1024) {
-      frontierStop = true;
-      hitBudget = true;
-      pageOffsets.pop_back();
-      LOG_ERR("VSC", "Frontier at page %zu (forcedBreaks=%u maxAlloc=%u)",
-              pageOffsets.size(), p.forcedBreaks, ma);
-      if (parserRef && *parserRef) XML_StopParser(*parserRef, XML_TRUE);
-      return;
-    }
-
     if (pageBudget > 0 && --pageBudget == 0) {
       LOG_DBG("VSC", "Page budget reached, stopping chunk");
       hitBudget = true;
@@ -1289,9 +1277,6 @@ bool VerticalSection::buildSomeMore(int maxPages) {
   build_->sink->pageBudget = (maxPages > 0) ? maxPages : 0;
   build_->sink->hitBudget = false;
   build_->sink->frontierStop = false;
-
-  // Reset the one-shot glyph-drop guard for this chunk.
-  build_->layout->clearDropFlag();
 
   // If the parser was suspended by XML_StopParser (page budget reached),
   // resume it before feeding the next chunk.

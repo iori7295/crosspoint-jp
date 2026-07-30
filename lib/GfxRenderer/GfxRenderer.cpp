@@ -2001,6 +2001,37 @@ int GfxRenderer::getTextAdvanceX(const int fontId, const char* text, EpdFontFami
   return widthPx;
 }
 
+int GfxRenderer::getRenderAdvanceX(const int fontId, const char* text, const EpdFontFamily::Style style) const {
+  if (text == nullptr || *text == '\0') return 0;
+  const auto fontIt = fontMap.find(fontId);
+  if (fontIt == fontMap.end()) {
+    LOG_ERR("GFX", "Font %d not found", fontId);
+    return 0;
+  }
+  const auto& font = fontIt->second;
+  int widthPx = 0;
+  int32_t prevAdvanceFP = 0;
+  uint32_t cp;
+  uint32_t prevCp = 0;
+  while ((cp = utf8NextCodepoint(reinterpret_cast<const uint8_t**>(&text)))) {
+    if (cp >= 0x0591 && cp <= 0x05C7) continue;
+    if (utf8IsCombiningMark(cp)) continue;
+    cp = font.applyLigatures(cp, text, style);
+    if (prevCp != 0) {
+      const auto kernFP = font.getKerning(prevCp, cp, style);
+      widthPx += fp4::toPixel(prevAdvanceFP + kernFP);
+    }
+    const EpdGlyph* glyph = font.getGlyph(cp, style);
+    prevAdvanceFP = glyph ? glyph->advanceX : 0;
+    if ((style & (EpdFontFamily::SUP | EpdFontFamily::SUB)) != 0) {
+      prevAdvanceFP = (prevAdvanceFP + 1) / 2;
+    }
+    prevCp = cp;
+  }
+  widthPx += fp4::toPixel(prevAdvanceFP);
+  return widthPx;
+}
+
 int GfxRenderer::getFontAscenderSize(const int fontId) const {
   const auto fontIt = fontMap.find(fontId);
   if (fontIt == fontMap.end()) {
@@ -2227,6 +2258,46 @@ void GfxRenderer::drawCharVerticalRotatedInCell(const int fontId, const int cell
   const int cursorY = drawY - glyph->left;
 
   renderCharImpl<TextRotation::Rotated90CCW>(*this, renderMode, font, cp, cursorX, cursorY, black, style);
+}
+
+bool GfxRenderer::verticalPunctInkBox(const int fontId, const uint32_t cp, const EpdFontFamily::Style style,
+                                       const int cellTopY, const int cellSize, const int shiftType, int* inkTop,
+                                       int* inkHeight) const {
+  if (!inkTop || !inkHeight) return false;
+  *inkTop = INT32_MIN;
+  drawCharVerticalRotatedInCell(fontId, 0, cellTopY, cellSize, cp, shiftType, true, style, inkTop, inkHeight);
+  if (*inkTop == INT32_MIN) return false;
+  if (cp == 0x2025 || cp == 0x2026) {
+    *inkTop += std::max(1, (cellSize * 7) / 8);
+  } else if (shiftType == 4) {
+    *inkTop += std::max(1, (cellSize * 3) / 8);
+  }
+  return true;
+}
+
+void GfxRenderer::drawCharVerticalCornerTopRight(const int fontId, const int cellLeftX, const int cellTopY,
+                                                 const int cellSize, const uint32_t cp, const bool black,
+                                                 const EpdFontFamily::Style style) const {
+  const auto fontIt = fontMap.find(fontId);
+  if (fontIt == fontMap.end()) {
+    LOG_ERR("GFX", "Font %d not found", fontId);
+    return;
+  }
+  const auto& font = fontIt->second;
+  const EpdGlyph* glyph = font.getGlyph(cp, style);
+  if (!glyph) return;
+  const int top = glyph->top;
+  const int height = glyph->height;
+  const int left = glyph->left;
+  const int width = glyph->width;
+  const int padX = std::max(1, cellSize / 4);
+  const int cursorX = cellLeftX + cellSize - padX - width - left;
+  int topPos = cellTopY + cellSize / 2 - height / 2;
+  const int minTop = cellTopY + 1;
+  const int maxTop = cellTopY + std::max(1, cellSize - height - 1);
+  topPos = std::clamp(topPos, minTop, maxTop);
+  const int cursorY = topPos + top;
+  renderCharImpl<TextRotation::None>(*this, renderMode, font, cp, cursorX, cursorY, black, style);
 }
 
 uint8_t* GfxRenderer::getFrameBuffer() const { return frameBuffer; }

@@ -273,12 +273,21 @@ class GfxRenderer {
   // Japanese text where glyphs are rotated in-cell)
   void drawTextRotated90CCW(int fontId, int x, int y, const char* text, bool black = true,
                             EpdFontFamily::Style style = EpdFontFamily::REGULAR) const;
+  /// Render-truth advance measurement: walks the same glyph/kerning sequence as
+  /// drawText, resolving glyphs through getGlyph() (on-demand SD load) exactly as
+  /// rendering will.  Short strings only (each cold glyph costs an SD read).
+  int getRenderAdvanceX(int fontId, const char* text, EpdFontFamily::Style style = EpdFontFamily::REGULAR) const;
   /// Render a single rotated (90° CCW) punctuation glyph centered in its cell,
   /// with font-adaptive baseline tracking and shift-type positioning.
-  /// Imported from matcha-reader v98 (MIT) — replaces previous inline formulas.
   void drawCharVerticalRotatedInCell(int fontId, int cellLeftX, int cellTopY, int cellSize, uint32_t cp, int shiftType,
                                      bool black, EpdFontFamily::Style style, int* inkTopOut = nullptr,
                                      int* inkHeightOut = nullptr) const;
+  /// Render small kana (ゃゅょ etc.) in the top-right corner of a vertical cell.
+  void drawCharVerticalCornerTopRight(int fontId, int cellLeftX, int cellTopY, int cellSize, uint32_t cp,
+                                      bool black = true, EpdFontFamily::Style style = EpdFontFamily::REGULAR) const;
+  /// Reports where drawCharVerticalRotatedInCell() would put this glyph's ink.
+  bool verticalPunctInkBox(int fontId, uint32_t cp, EpdFontFamily::Style style, int cellTopY, int cellSize,
+                           int shiftType, int* inkTop, int* inkHeight) const;
   int getTextHeight(int fontId) const;
 
   // Grayscale functions

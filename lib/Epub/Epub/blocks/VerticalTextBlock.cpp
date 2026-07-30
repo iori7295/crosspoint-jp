@@ -73,20 +73,8 @@ void drawGlyphs(GfxRenderer& renderer, const VerticalPage& page, int fontId, int
     }
 
     if (g.renderKind == VerticalGlyph::SmallKanaCorner) {
-      const auto style = static_cast<EpdFontFamily::Style>(g.style);
-      int gl = 0, gw = 0, gt = 0, gh = 0;
-      if (renderer.getGlyphMetrics(fontId, g.codepoint, style, &gl, &gw, &gt, &gh)) {
-        const int padX = std::max(1, cellPx / 4);
-        const int cursorX = dx + cellPx - padX - gw - gl;
-        int topPos = dy + cellPx / 2 - gh / 2;
-        const int minTop = dy + 1;
-        const int maxTop = dy + std::max(1, cellPx - gh - 1);
-        topPos = std::clamp(topPos, minTop, maxTop);
-        const int cursorY = topPos + gt;
-        std::string utf8Buf;
-        encodeCodepoint(g.codepoint, utf8Buf);
-        renderer.drawText(fontId, cursorX, cursorY, utf8Buf.c_str(), black, style);
-      }
+      renderer.drawCharVerticalCornerTopRight(fontId, dx, dy, cellPx, g.codepoint, black,
+                                              static_cast<EpdFontFamily::Style>(g.style));
       continue;
     }
 
