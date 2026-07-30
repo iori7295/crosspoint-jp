@@ -950,6 +950,7 @@ struct LayoutPageSink final : ParagraphSink {
     // page and stop — the section becomes partial at the previous frontier.
     if (layout.everDroppedForHeap()) {
       frontierStop = true;
+      hitBudget = true;
       pageOffsets.pop_back();
       LOG_ERR("VSC", "Glyph drop detected — discarding page %zu", pageOffsets.size());
       if (parserRef && *parserRef) XML_StopParser(*parserRef, XML_TRUE);
