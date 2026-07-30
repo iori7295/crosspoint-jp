@@ -90,18 +90,15 @@ void drawGlyphs(GfxRenderer& renderer, const VerticalPage& page, int fontId, int
         // any vertical baseline offset.
         int gl = 0, gw = 0, gt = 0, gh = 0;
         (void)renderer.getGlyphMetrics(fontId, g.codepoint, style, &gl, &gw, &gt, &gh);
-        int ascenderExtra = 0;
-        if (cellPx > 0 && gh > 0) {
-          const int pct = gt * 100 / cellPx;
-          if (pct > 110) ascenderExtra = cellPx * (pct - 100) / 25;
-        }
-        int nudgeX = 0, nudgeY = 0;
-        if (shiftType == 1 || shiftType == 2) {
-          nudgeY = cellPx / 6 + ascenderExtra;
-        } else if (shiftType == 3) {
+        int nudgeX = 0;
+        if (shiftType == 3) {
           nudgeX = cellPx / 12;
-          nudgeY = cellPx / 8;
-        } else if (shiftType == 4) {
+        }
+        // nudgeY: centering is handled by the formula below (g.y + offsetY + cellPx/2
+        // - gl - gw/2) so no vertical nudge is needed for most punctuation.  Only
+        // shiftType 4 (dashes) need extra horizontal offset after rotation.
+        int nudgeY = 0;
+        if (shiftType == 4) {
           nudgeY = std::max(1, (cellPx * 3) / 8);
         }
         // Rotated 90° CCW: screenX = cursorX + top - glyphY → ink visual
