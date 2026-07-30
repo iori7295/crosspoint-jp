@@ -960,6 +960,7 @@ struct LayoutPageSink final : ParagraphSink {
     const uint32_t ma = ESP.getMaxAllocHeap();
     if (p.forcedBreaks > 0 && ma < 12 * 1024) {
       frontierStop = true;
+      hitBudget = true;
       pageOffsets.pop_back();
       LOG_ERR("VSC", "Frontier at page %zu (forcedBreaks=%u maxAlloc=%u)",
               pageOffsets.size(), p.forcedBreaks, ma);
